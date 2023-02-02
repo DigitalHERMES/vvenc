@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -669,15 +669,13 @@ static inline unsigned int bit_scan_reverse( int a )
 #if ENABLE_SIMD_LOG2
 static inline int floorLog2( int val )
 {
+  CHECKD(val == 0, "invalid input value");
   return bit_scan_reverse( val );
 }
 #else
 static inline int floorLog2(uint32_t x)
 {
-  if (x == 0)
-  {
-    return -1;
-  }
+  CHECKD( x == 0, "invalid input value");
 #ifdef __GNUC__
   return 31 - __builtin_clz(x);
 #else

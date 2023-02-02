@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -181,6 +181,7 @@ private:
   const ScanElement* m_scanOrder;
 
   Partitioner        m_partitioner[2];
+  CtxTpl             m_tplBuf[MAX_TB_SIZEY * MAX_TB_SIZEY];
  };
 
 

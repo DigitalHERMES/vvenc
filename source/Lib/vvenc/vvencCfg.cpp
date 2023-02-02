@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -377,8 +377,6 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   c->m_confWinTop                              = 0;
   c->m_confWinBottom                           = 0;
 
-  c->m_temporalSubsampleRatio                  = 1;                                     ///< temporal subsample ratio, 2 means code every two frames
-
   c->m_PadSourceWidth                          = 0;                                     ///< source width in pixel
   c->m_PadSourceHeight                         = 0;                                     ///< source height in pixel (when interlaced = field height)
 
@@ -468,8 +466,6 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   c->m_maxBT[0]=32;  c->m_maxBT[1]=128;  c->m_maxBT[2]=64;
   c->m_maxTT[0]=32;  c->m_maxTT[1]=64;  c->m_maxTT[2]=32;
   c->m_dualITree                               = true;
-  c->m_MaxCodingDepth                          = 0;                                     ///< max. total CU depth - includes depth of transform-block structure
-  c->m_log2DiffMaxMinCodingBlockSize           = 0;                                     ///< difference between largest and smallest CU depth
   c->m_log2MaxTbSize                           = 6;
   c->m_log2MinCodingBlockSize                  = 2;
 
@@ -815,18 +811,6 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
     vvenc_confirmParameter( c, c->m_level == vvencLevel::VVENC_LEVEL15_5 && !profileFeatures->canUseLevel15p5, "The video dimensions (size/rate) exceed the allowed maximum throughput for the level/profile combination!" );
   }
 
-  if( !c->m_configDone )
-  {
-    if( c->m_temporalSubsampleRatio )
-    {
-      int framesSubsampled = ( c->m_framesToBeEncoded + c->m_temporalSubsampleRatio - 1 ) / c->m_temporalSubsampleRatio;
-      if( c->m_framesToBeEncoded != framesSubsampled )
-      {
-        c->m_framesToBeEncoded = framesSubsampled;
-      }
-    }
-  }
-
   c->m_maxBT[0] = std::min( c->m_CTUSize, c->m_maxBT[0] );
   c->m_maxBT[1] = std::min( c->m_CTUSize, c->m_maxBT[1] );
   c->m_maxBT[2] = std::min( c->m_CTUSize, c->m_maxBT[2] );
@@ -860,7 +844,7 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
   if( c->m_ensureWppBitEqual < 0 )       c->m_ensureWppBitEqual     = c->m_numThreads ? 1   : 0   ;
   if( c->m_useAMaxBT < 0 )               c->m_useAMaxBT             = c->m_numThreads ? 0   : 1   ;
   if( c->m_cabacInitPresent < 0 )        c->m_cabacInitPresent      = c->m_numThreads ? 0   : 1   ;
-  if( c->m_alfTempPred < 0 )             c->m_alfTempPred           = c->m_numThreads ? 0   : 1   ;
+  if( c->m_alfTempPred < 0 )             c->m_alfTempPred           = 1   ;
   if( c->m_saoEncodingRate < 0.0 )       c->m_saoEncodingRate       = c->m_numThreads ? 0.0 : 0.75;
   if( c->m_saoEncodingRateChroma < 0.0 ) c->m_saoEncodingRateChroma = c->m_numThreads ? 0.0 : 0.5 ;
   if( c->m_maxParallelFrames < 0 )
@@ -1055,7 +1039,7 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
   case 1:
     {
       // automatic padding to minimum CU size
-      const int minCuSize = 1 << ( vvenc::MIN_CU_LOG2 + 1 );
+      const int minCuSize = std::max( 1 << ( vvenc::MIN_CU_LOG2 + 1 ), 1 << c->m_log2MinCodingBlockSize );
       if (c->m_SourceWidth % minCuSize)
       {
         c->m_aiPad[0] = c->m_confWinRight  = ((c->m_SourceWidth / minCuSize) + 1) * minCuSize - c->m_SourceWidth;
@@ -1155,14 +1139,6 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
       c->m_chromaQpMappingTableParams.m_deltaQpOutVal[2][i] = qpInValsCbCr[i + 1] - qpInValsCbCr[i];
     }
   }
-
-  const int minCuSize = 1 << vvenc::MIN_CU_LOG2;
-  c->m_MaxCodingDepth = 0;
-  while( ( c->m_CTUSize >> c->m_MaxCodingDepth ) > minCuSize )
-  {
-    c->m_MaxCodingDepth++;
-  }
-  c->m_log2DiffMaxMinCodingBlockSize = c->m_MaxCodingDepth;
 
   int fps = c->m_FrameRate/c->m_FrameScale;
 
@@ -1279,7 +1255,6 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
       break;
   }
 
-  vvenc_confirmParameter( c, c->m_leadFrames > 0 && c->m_temporalSubsampleRatio > 1, "Use of leading frames not supported in combination with temporal subsampling" );
   vvenc_confirmParameter( c, c->m_trailFrames > 0 && c->m_framesToBeEncoded <= 0, "If number of trailing frames is given, the total number of frames to be encoded has to be set" );
 
   //
@@ -1773,7 +1748,6 @@ static bool checkCfgParameter( vvenc_config *c )
   vvenc_confirmParameter( c, c->m_log2SaoOffsetScale[0]   > (c->m_internalBitDepth[0  ]<10?0:(c->m_internalBitDepth[0  ]-10)), "SaoLumaOffsetBitShift must be in the range of 0 to InternalBitDepth-10, inclusive");
   vvenc_confirmParameter( c, c->m_log2SaoOffsetScale[1] > (c->m_internalBitDepth[1]<10?0:(c->m_internalBitDepth[1]-10)), "SaoChromaOffsetBitShift must be in the range of 0 to InternalBitDepthC-10, inclusive");
 
-  vvenc_confirmParameter( c, c->m_temporalSubsampleRatio < 1,                                               "Temporal subsample rate must be greater than or equal to 1" );
   vvenc_confirmParameter( c, c->m_framesToBeEncoded < c->m_switchPOC,                                          "debug POC out of range" );
 
   vvenc_confirmParameter( c, c->m_DecodingRefreshType < 0 || c->m_DecodingRefreshType > 5,                "Decoding refresh type must be comprised between 0 and 5 included" );
@@ -1793,7 +1767,7 @@ static bool checkCfgParameter( vvenc_config *c )
   vvenc_confirmParameter( c, c->m_vvencMCTF.numFrames != c->m_vvencMCTF.numStrength,                "MCTF parameter list sizes differ" );
   vvenc_confirmParameter( c, c->m_vvencMCTF.MCTFSpeed < 0 || c->m_vvencMCTF.MCTFSpeed > 4,          "MCTFSpeed exceeds supported range (0..4)" );
   vvenc_confirmParameter( c, c->m_vvencMCTF.MCTFUnitSize < 8,                                       "MCTFUnitSize is smaller than 8" );
-  vvenc_confirmParameter( c, c->m_vvencMCTF.MCTFUnitSize > 64,                                      "MCTFUnitSize is larger than 64" );
+  vvenc_confirmParameter( c, c->m_vvencMCTF.MCTFUnitSize > 32,                                      "MCTFUnitSize is larger than 32" );
   vvenc_confirmParameter( c, c->m_vvencMCTF.MCTFUnitSize & ( c->m_vvencMCTF.MCTFUnitSize - 1 ),     "MCTFUnitSize is not a power of 2" );
   static const std::string errorSegLessRng = std::string( "When using segment parallel encoding more then " ) + static_cast< char >( VVENC_MCTF_RANGE + '0' ) + " frames have to be encoded";
   vvenc_confirmParameter( c, c->m_SegmentMode != VVENC_SEG_OFF && c->m_framesToBeEncoded < VVENC_MCTF_RANGE, errorSegLessRng.c_str() );
@@ -1907,30 +1881,27 @@ static bool checkCfgParameter( vvenc_config *c )
     msg.log( VVENC_WARNING, "Configuration warning: chroma QPA on, ignoring nonzero dual-tree chroma QP offsets!\n\n");
   }
 
-  vvenc_confirmParameter(c, c->m_usePerceptQPATempFiltISlice > 2,                                                    "PerceptQPATempFiltIPic out of range, must be 2 or less" );
-  vvenc_confirmParameter(c, c->m_usePerceptQPATempFiltISlice > 0 && c->m_vvencMCTF.MCTF == 0,                        "PerceptQPATempFiltIPic must be turned off when MCTF is off" );
+  vvenc_confirmParameter(c, c->m_usePerceptQPATempFiltISlice > 2,                                                       "PerceptQPATempFiltIPic out of range, must be 2 or less" );
+  vvenc_confirmParameter(c, c->m_usePerceptQPATempFiltISlice > 0 && c->m_vvencMCTF.MCTF == 0,                           "PerceptQPATempFiltIPic must be turned off when MCTF is off" );
 
-  vvenc_confirmParameter(c, c->m_usePerceptQPA && (c->m_cuQpDeltaSubdiv > 2),                                     "MaxCuDQPSubdiv must be 2 or smaller when PerceptQPA is on" );
+  vvenc_confirmParameter(c, c->m_usePerceptQPA && (c->m_cuQpDeltaSubdiv > 2),                                           "MaxCuDQPSubdiv must be 2 or smaller when PerceptQPA is on" );
 
-  vvenc_confirmParameter(c, c->m_MaxCodingDepth > vvenc::MAX_CU_DEPTH,                                                      "MaxPartitionDepth exceeds predefined MAX_CU_DEPTH limit");
-  vvenc_confirmParameter(c, c->m_MinQT[0] < 1<<vvenc::MIN_CU_LOG2,                                                          "Minimum QT size should be larger than or equal to 4");
-  vvenc_confirmParameter(c, c->m_MinQT[1] < 1<<vvenc::MIN_CU_LOG2,                                                          "Minimum QT size should be larger than or equal to 4");
-  vvenc_confirmParameter(c, c->m_CTUSize < 32,                                                                       "CTUSize must be greater than or equal to 32");
-  vvenc_confirmParameter(c, c->m_CTUSize > 128,                                                                      "CTUSize must be less than or equal to 128");
-  vvenc_confirmParameter(c, c->m_CTUSize != 32 && c->m_CTUSize != 64 && c->m_CTUSize != 128,                               "CTUSize must be a power of 2 (32, 64, or 128)");
-  vvenc_confirmParameter(c, c->m_MaxCodingDepth < 1,                                                                 "MaxPartitionDepth must be greater than zero");
-  vvenc_confirmParameter(c, (c->m_CTUSize  >> ( c->m_MaxCodingDepth - 1 ) ) < 8,                                        "Minimum partition width size should be larger than or equal to 8");
-  vvenc_confirmParameter(c, (c->m_PadSourceWidth  % std::max( 8, int(c->m_CTUSize  >> ( c->m_MaxCodingDepth - 1 )))) != 0, "Resulting coded frame width must be a multiple of Max(8, the minimum CU size)");
-  vvenc_confirmParameter(c, c->m_log2MaxTbSize > 6,                                                                  "Log2MaxTbSize must be 6 or smaller." );
-  vvenc_confirmParameter(c, c->m_log2MaxTbSize < 5,                                                                  "Log2MaxTbSize must be 5 or greater." );
+  vvenc_confirmParameter(c, c->m_MinQT[0] < 1<<vvenc::MIN_CU_LOG2,                                                      "Minimum QT size should be larger than or equal to 4");
+  vvenc_confirmParameter(c, c->m_MinQT[1] < 1<<vvenc::MIN_CU_LOG2,                                                      "Minimum QT size should be larger than or equal to 4");
+  vvenc_confirmParameter(c, c->m_CTUSize < 32,                                                                          "CTUSize must be greater than or equal to 32");
+  vvenc_confirmParameter(c, c->m_CTUSize > 128,                                                                         "CTUSize must be less than or equal to 128");
+  vvenc_confirmParameter(c, c->m_CTUSize != 32 && c->m_CTUSize != 64 && c->m_CTUSize != 128,                            "CTUSize must be a power of 2 (32, 64, or 128)");
+  vvenc_confirmParameter(c, (c->m_PadSourceWidth  % std::max( 8, 1 << c->m_log2MinCodingBlockSize )) != 0,              "Resulting coded frame width must be a multiple of Max(8, the minimum CU size)");
+  vvenc_confirmParameter(c, (c->m_PadSourceHeight % std::max( 8, 1 << c->m_log2MinCodingBlockSize )) != 0,              "Resulting coded frame width must be a multiple of Max(8, the minimum CU size)");
+  vvenc_confirmParameter(c, c->m_log2MaxTbSize > 6,                                                                     "Log2MaxTbSize must be 6 or smaller." );
+  vvenc_confirmParameter(c, c->m_log2MaxTbSize < 5,                                                                     "Log2MaxTbSize must be 5 or greater." );
 
-  vvenc_confirmParameter( c, c->m_log2MinCodingBlockSize < 2,                                                         "Log2MinCodingBlockSize must be 2 or greater." );
-  vvenc_confirmParameter( c, c->m_CTUSize < ( 1 << c->m_log2MinCodingBlockSize ),                                        "Log2MinCodingBlockSize must be smaller than max CTU size." );
-  vvenc_confirmParameter( c, c->m_MinQT[ 0 ] < ( 1 << c->m_log2MinCodingBlockSize ),                                     "Log2MinCodingBlockSize must be greater than min QT size for I slices" );
-  vvenc_confirmParameter( c, c->m_MinQT[ 1 ] < ( 1 << c->m_log2MinCodingBlockSize ),                                     "Log2MinCodingBlockSize must be greater than min QT size for non I slices" );
-
+  vvenc_confirmParameter( c, c->m_log2MinCodingBlockSize < 2,                                                           "Log2MinCodingBlockSize must be 2 or greater." );
+  vvenc_confirmParameter( c, c->m_CTUSize < ( 1 << c->m_log2MinCodingBlockSize ),                                       "Log2MinCodingBlockSize must be smaller than max CTU size." );
+  vvenc_confirmParameter( c, c->m_MinQT[ 0 ] < ( 1 << c->m_log2MinCodingBlockSize ),                                    "Log2MinCodingBlockSize must be greater than min QT size for I slices" );
+  vvenc_confirmParameter( c, c->m_MinQT[ 1 ] < ( 1 << c->m_log2MinCodingBlockSize ),                                    "Log2MinCodingBlockSize must be greater than min QT size for non I slices" );
   const int chromaScaleX = ( (c->m_internChromaFormat==VVENC_CHROMA_444) ) ? 0 : 1;
-  vvenc_confirmParameter( c, ( c->m_MinQT[ 2 ] << chromaScaleX ) < ( 1 << c->m_log2MinCodingBlockSize ), "Log2MinCodingBlockSize must be greater than min chroma QT size for I slices" );
+  vvenc_confirmParameter( c, ( c->m_MinQT[ 2 ] << chromaScaleX ) < ( 1 << c->m_log2MinCodingBlockSize ),                "Log2MinCodingBlockSize must be greater than min chroma QT size for I slices" );
 
   if( c->m_maxMTTDepth >= 10 && c->m_maxMTTDepth >= pow( 10, ( maxTLayer + 1 ) ) )
   {
@@ -1971,18 +1942,13 @@ static bool checkCfgParameter( vvenc_config *c )
     vvenc_confirmParameter(c, c->m_useAMaxBT,             "Frame parallel processing: AMaxBT is not supported (must be disabled)" );
     vvenc_confirmParameter(c, c->m_cabacInitPresent,      "Frame parallel processing: CabacInitPresent is not supported (must be disabled)" );
     vvenc_confirmParameter(c, c->m_saoEncodingRate > 0.0, "Frame parallel processing: SaoEncodingRate is not supported (must be disabled)" );
-    vvenc_confirmParameter(c, c->m_alfTempPred,           "Frame parallel processing: ALFTempPred is not supported (must be disabled)" );
 #if ENABLE_TRACING
-    vvenc_confirmParameter(c, c->m_traceFile[0] != '\0' && c->m_maxParallelFrames > 1, "Tracing and frame parallel encoding not supported" );
+    vvenc_confirmParameter(c, c->m_traceFile[0] != '\0' && c->m_maxParallelFrames > 1 && c->m_numThreads > 1, "Tracing and frame parallel encoding not supported" );
 #endif
     vvenc_confirmParameter(c, c->m_maxParallelFrames > c->m_GOPSize && c->m_GOPSize != 1, "Max parallel frames should be less then GOP size" );
   }
 
   vvenc_confirmParameter(c, c->m_explicitAPSid < 0 || c->m_explicitAPSid > 7, "ExplicitAPDid out of range [0 .. 7]" );
-
-  vvenc_confirmParameter(c,((c->m_PadSourceWidth) & 7) != 0, "internal picture width must be a multiple of 8 - check cropping options");
-  vvenc_confirmParameter(c,((c->m_PadSourceHeight) & 7) != 0, "internal picture height must be a multiple of 8 - check cropping options");
-
 
   vvenc_confirmParameter(c, c->m_maxNumMergeCand < 1,                              "MaxNumMergeCand must be 1 or greater.");
   vvenc_confirmParameter(c, c->m_maxNumMergeCand > vvenc::MRG_MAX_NUM_CANDS,              "MaxNumMergeCand must be no more than MRG_MAX_NUM_CANDS." );
@@ -2008,7 +1974,6 @@ static bool checkCfgParameter( vvenc_config *c )
   }
 
   vvenc_confirmParameter(c,  c->m_IntraPeriod != 1 && c->m_intraOnlyConstraintFlag, "IntraOnlyConstraintFlag cannot be 1 for inter sequences");
-  vvenc_confirmParameter(c,  c->m_temporalSubsampleRatio < 1, "TemporalSubsampleRatio must be greater than 0");
 
   if( c->m_GOPList[ 0 ].m_POC != -1 )
   {
@@ -2320,10 +2285,9 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
   std::copy(qpVals.begin(), qpVals.end(), c->m_qpOutValsCb);
 
   // basic settings
+  c->m_log2MinCodingBlockSize          = 2;
   c->m_intraQPOffset                   = -3;
   c->m_lambdaFromQPEnable              = true;
-  c->m_MaxCodingDepth                  = 5;
-  c->m_log2DiffMaxMinCodingBlockSize   = 5;
   c->m_bUseASR                         = true;
   c->m_bUseHADME                       = true;
   c->m_fastHad                         = false;
@@ -2344,6 +2308,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
   c->m_alfSpeed                        = 0;
   c->m_allowDisFracMMVD                = 0;
   c->m_BCW                             = 0;
+  c->m_blockImportanceMapping          = 0;
   c->m_BDOF                            = 0;
   c->m_ccalf                           = 0;
   c->m_CIIP                            = 0;
@@ -2402,7 +2367,6 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_MinQT[ 2 ]                      = 16;
       c->m_maxMTTDepth                     = 0;
       c->m_maxMTTDepthI                    = 0;
-      c->m_log2MinCodingBlockSize          = 5;
 
       // speedups
       c->m_qtbttSpeedUp                    = 7;
@@ -2425,6 +2389,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_numRefPicsSCC                   = 0;
 
       // tools
+      c->m_blockImportanceMapping          = 1;
       c->m_RDOQ                            = 2;
       c->m_SignDataHidingEnabled           = 1;
       c->m_LMChroma                        = 1;
@@ -2451,11 +2416,10 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_CTUSize                         = 64;
       c->m_dualITree                       = 1;
       c->m_MinQT[ 0 ]                      = 4;
-      c->m_MinQT[ 1 ]                      = 4;
-      c->m_MinQT[ 2 ]                      = 2;
+      c->m_MinQT[ 1 ]                      = 8;
+      c->m_MinQT[ 2 ]                      = 4;
       c->m_maxMTTDepth                     = 0;
       c->m_maxMTTDepthI                    = 0;
-      c->m_log2MinCodingBlockSize          = 2;
 
       // speedups
       c->m_qtbttSpeedUp                    = 7;
@@ -2468,19 +2432,20 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_fastSubPel                      = 1;
       c->m_FastIntraTools                  = 0;
       c->m_FIMMode                         = 4;
-      c->m_useEarlyCU                      = 1;
+      c->m_useEarlyCU                      = 2;
       c->m_bIntegerET                      = 1;
       c->m_IntraEstDecBit                  = 3;
       c->m_numIntraModesFullRD             = 1;
       c->m_reduceIntraChromaModesFullRD    = true;
       c->m_meReduceTap                     = 2;
-      c->m_numRefPics                      = 222111;
+      c->m_numRefPics                      = 1;
       c->m_numRefPicsSCC                   = 0;
 
       // tools
       c->m_alf                             = 1;
       c->m_alfSpeed                        = 2;
       c->m_alfUnitSize                     = 128;
+      c->m_blockImportanceMapping          = 1;
       c->m_ccalf                           = 1;
       c->m_DMVR                            = 1;
       c->m_RDOQ                            = 2;
@@ -2509,30 +2474,29 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_CTUSize                         = 64;
       c->m_dualITree                       = 1;
       c->m_MinQT[ 0 ]                      = 4;
-      c->m_MinQT[ 1 ]                      = 4;
-      c->m_MinQT[ 2 ]                      = 2;
+      c->m_MinQT[ 1 ]                      = 8;
+      c->m_MinQT[ 2 ]                      = 4;
       c->m_maxMTTDepth                     = 0;
       c->m_maxMTTDepthI                    = 1;
-      c->m_log2MinCodingBlockSize          = 2;
 
       // speedups
-      c->m_qtbttSpeedUp                    = 7;
+      c->m_qtbttSpeedUp                    = 3;
       c->m_fastTTSplit                     = 0;
       c->m_contentBasedFastQtbt            = true;
       c->m_fastHad                         = false;
       c->m_usePbIntraFast                  = 1;
-      c->m_useFastMrg                      = 2;
+      c->m_useFastMrg                      = 3;
       c->m_fastLocalDualTreeMode           = 1;
       c->m_fastSubPel                      = 1;
       c->m_FastIntraTools                  = 0;
-      c->m_FIMMode                         = 3;
-      c->m_useEarlyCU                      = 1;
+      c->m_FIMMode                         = 2;
+      c->m_useEarlyCU                      = 2;
       c->m_bIntegerET                      = 0;
       c->m_IntraEstDecBit                  = 2;
-      c->m_numIntraModesFullRD             = -1;
+      c->m_numIntraModesFullRD             = 1;
       c->m_reduceIntraChromaModesFullRD    = true;
       c->m_meReduceTap                     = 2;
-      c->m_numRefPics                      = 222211;
+      c->m_numRefPics                      = 222111;
       c->m_numRefPicsSCC                   = 0;
 
       // tools
@@ -2541,17 +2505,20 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_alfSpeed                        = 1;
       c->m_alfUnitSize                     = 128;
       c->m_allowDisFracMMVD                = 1;
+      c->m_blockImportanceMapping          = 1;
       c->m_BDOF                            = 1;
       c->m_ccalf                           = 1;
       c->m_DepQuantEnabled                 = 1;
       c->m_DMVR                            = 1;
       c->m_AMVRspeed                       = 5;
+      c->m_JointCbCrMode                   = 1;
       c->m_LFNST                           = 1;
       c->m_LMChroma                        = 1;
       c->m_lumaReshapeEnable               = 2;
       c->m_vvencMCTF.MCTF                  = 2;
-      c->m_vvencMCTF.MCTFSpeed             = 3;
+      c->m_vvencMCTF.MCTFSpeed             = 2;
       c->m_MMVD                            = 3;
+      c->m_MRL                             = 1;
       c->m_MTSImplicit                     = 1;
       c->m_PROF                            = 1;
       c->m_SbTMVP                          = 1;
@@ -2575,18 +2542,17 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_dualITree                       = 1;
       c->m_MinQT[ 0 ]                      = 8;
       c->m_MinQT[ 1 ]                      = 8;
-      c->m_MinQT[ 2 ]                      = 4;
-      c->m_maxMTTDepth                     = 1;
+      c->m_MinQT[ 2 ]                      = 8;
+      c->m_maxMTTDepth                     = 221111;
       c->m_maxMTTDepthI                    = 2;
-      c->m_log2MinCodingBlockSize          = 2;
 
       // speedups
       c->m_qtbttSpeedUp                    = 3;
-      c->m_fastTTSplit                     = 0;
-      c->m_contentBasedFastQtbt            = false;
+      c->m_fastTTSplit                     = 5;
+      c->m_contentBasedFastQtbt            = true;
       c->m_fastHad                         = false;
       c->m_usePbIntraFast                  = 1;
-      c->m_useFastMrg                      = 2;
+      c->m_useFastMrg                      = 3;
       c->m_fastLocalDualTreeMode           = 1;
       c->m_fastSubPel                      = 1;
       c->m_FastIntraTools                  = 1;
@@ -2597,7 +2563,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_numIntraModesFullRD             = -1;
       c->m_reduceIntraChromaModesFullRD    = true;
       c->m_meReduceTap                     = 2;
-      c->m_numRefPics                      = 222221;
+      c->m_numRefPics                      = 222111;
       c->m_numRefPicsSCC                   = 0;
 
       // tools
@@ -2605,6 +2571,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_alf                             = 1;
       c->m_alfSpeed                        = 0;
       c->m_allowDisFracMMVD                = 1;
+      c->m_blockImportanceMapping          = 1;
       c->m_BDOF                            = 1;
       c->m_ccalf                           = 1;
       c->m_CIIP                            = 0;
@@ -2651,7 +2618,6 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_MinQT[ 2 ]                      = 4;
       c->m_maxMTTDepth                     = 2;
       c->m_maxMTTDepthI                    = 3;
-      c->m_log2MinCodingBlockSize          = 2;
 
       // speedups
       c->m_qtbttSpeedUp                    = 2;
@@ -2677,6 +2643,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_alfSpeed                        = 0;
       c->m_allowDisFracMMVD                = 1;
       c->m_BCW                             = 2;
+      c->m_blockImportanceMapping          = 1;
       c->m_BDOF                            = 1;
       c->m_ccalf                           = 1;
       c->m_CIIP                            = 1;
@@ -2724,7 +2691,6 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_MinQT[ 2 ]                      = 4;
       c->m_maxMTTDepth                     = 333332;
       c->m_maxMTTDepthI                    = 3;
-      c->m_log2MinCodingBlockSize          = 2;
 
       // speedups
       c->m_qtbttSpeedUp                    = 1;
@@ -2750,6 +2716,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_alfSpeed                        = 0;
       c->m_allowDisFracMMVD                = 1;
       c->m_BCW                             = 2;
+      c->m_blockImportanceMapping          = 1;
       c->m_BDOF                            = 1;
       c->m_ccalf                           = 1;
       c->m_CIIP                            = 1;
@@ -2799,7 +2766,6 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_MinQT[ 2 ]                      = 4;
       c->m_maxMTTDepth                     = 1;
       c->m_maxMTTDepthI                    = 2;
-      c->m_log2MinCodingBlockSize          = 2;
 
       // speedups
       c->m_qtbttSpeedUp                    = 2;
@@ -2825,6 +2791,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_alfSpeed                        = 0;
       c->m_allowDisFracMMVD                = 1;
       c->m_BCW                             = 2;
+      c->m_blockImportanceMapping          = 0;
       c->m_BDOF                            = 1;
       c->m_ccalf                           = 1;
       c->m_CIIP                            = 3;
@@ -2874,9 +2841,38 @@ VVENC_DECL const char* vvenc_get_config_as_string( vvenc_config *c, vvencMsgLeve
 
   if( eMsgLevel >= VVENC_DETAILS )
   {
-    css << "Real     Format                        : " << c->m_PadSourceWidth - c->m_confWinLeft - c->m_confWinRight << "x" << c->m_PadSourceHeight - c->m_confWinTop - c->m_confWinBottom << " "
-                                                       << (double)c->m_FrameRate/c->m_FrameScale / c->m_temporalSubsampleRatio << "Hz " << getDynamicRangeStr(c->m_HdrMode) << "\n";
-    css << "Internal Format                        : " << c->m_PadSourceWidth << "x" << c->m_PadSourceHeight << " " <<  (double)c->m_FrameRate/c->m_FrameScale / c->m_temporalSubsampleRatio << "Hz "  << getDynamicRangeStr(c->m_HdrMode) << "\n";
+    css << "Internal Format                        : " << c->m_PadSourceWidth << "x" << c->m_PadSourceHeight << " " <<  (double)c->m_FrameRate/c->m_FrameScale << "Hz "  << getDynamicRangeStr(c->m_HdrMode) << "\n";
+    css << "Rate Control                           : ";
+  }
+  else if( eMsgLevel >= VVENC_INFO )
+  {
+    css << "Rate Control   : ";
+  }
+
+  if( eMsgLevel >= VVENC_INFO )        
+  {
+    if ( c->m_RCTargetBitrate > 0 )
+    {
+      if( c->m_RCTargetBitrate < 1000000 )
+        css << "VBR  " <<  (double)c->m_RCTargetBitrate/1000.0 << " kbps  ";
+      else
+        css << "VBR  " <<  (double)c->m_RCTargetBitrate/1000000.0 << " Mbps  ";
+      if( c->m_RCNumPasses == 2 )
+      {
+        css << "twopass";
+        if ( c->m_RCPass >= 0 )
+          css  << "  pass " << c->m_RCPass << "/2";
+      }
+      else
+        css << "singlepass";
+      css << "\n";
+    }
+    else
+      css << "QP " <<  c->m_QP << "\n";
+  }
+
+  if( eMsgLevel >= VVENC_DETAILS )
+  {
     css << "Sequence PSNR output                   : " << (c->m_printMSEBasedSequencePSNR ? "Linear average, MSE-based" : "Linear average only") << "\n";
     css << "Hexadecimal PSNR output                : " << (c->m_printHexPsnr ? "Enabled" : "Disabled") << "\n";
     css << "Sequence MSE output                    : " << (c->m_printSequenceMSE ? "Enabled" : "Disabled") << "\n";
@@ -2890,7 +2886,7 @@ VVENC_DECL const char* vvenc_get_config_as_string( vvenc_config *c, vvencMsgLeve
 
     css << "Profile                                : " << getProfileStr( c->m_profile ) << "\n";
     css << "Level                                  : " << getLevelStr( c->m_level ) << "\n";
-    css << "CU size / total-depth                  : " << c->m_CTUSize << " / " << c->m_MaxCodingDepth << "\n";
+    css << "CU size                                : " << c->m_CTUSize << "\n";
     css << "Max TB size                            : " << (1 << c->m_log2MaxTbSize) << "\n";
     css << "Min CB size                            : " << (1 << c->m_log2MinCodingBlockSize) << "\n";
     css << "Motion search range                    : " << c->m_SearchRange << "\n";
@@ -3073,6 +3069,11 @@ VVENC_DECL const char* vvenc_get_config_as_string( vvenc_config *c, vvencMsgLeve
       css << "RCInitialQP:" << c->m_RCInitialQP << " ";
       css << "RCForceIntraQP:" << c->m_RCForceIntraQP << " ";
     }
+    else
+    {
+      css << "QP:" << c->m_QP << " ";
+    }
+
     css << "LookAhead:" << c->m_LookAhead << " ";
 
     css << "\nPARALLEL PROCESSING CFG: ";

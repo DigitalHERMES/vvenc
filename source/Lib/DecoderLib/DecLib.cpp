@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -94,10 +94,11 @@ bool tryDecodePicture( Picture* pcEncPic, const int expectedPoc, const std::stri
       ffwdDecoder.pcDecLib->setDecoderInEncoderMode        ( true );
       ffwdDecoder.pcDecLib->setDebugPOC                    ( debugPOC );
       ffwdDecoder.pcDecLib->setDecodedPictureHashSEIEnabled( true );
-      if(apsMap) ffwdDecoder.pcDecLib->setAPSMapEnc        ( apsMap );
 
       msg.log( VVENC_INFO, "start to decode %s \n", bitstreamFileName.c_str() );
     }
+    if(apsMap) 
+      ffwdDecoder.pcDecLib->setAPSMapEnc        ( apsMap );
 
     bool goOn = true;
     DecLib *pcDecLib = ffwdDecoder.pcDecLib;
@@ -1079,9 +1080,7 @@ void DecLib::xActivateParameterSets( const int layerId)
     m_cSliceDecoder.create();
     if( sps->alfEnabled )
     {
-      const int maxDepth = floorLog2(sps->CTUSize) - sps->log2MinCodingBlockSize;
-
-      m_cALF.create( sps->maxPicWidthInLumaSamples, sps->maxPicHeightInLumaSamples, sps->chromaFormatIdc, sps->CTUSize, sps->CTUSize, maxDepth, sps->bitDepths.recon );
+      m_cALF.create( sps->maxPicWidthInLumaSamples, sps->maxPicHeightInLumaSamples, sps->chromaFormatIdc, sps->CTUSize, sps->CTUSize, sps->bitDepths.recon );
     }
     pSlice->ccAlfFilterControl[0] = m_cALF.m_ccAlfFilterControl[COMP_Cb-1];
     pSlice->ccAlfFilterControl[1] = m_cALF.m_ccAlfFilterControl[COMP_Cr-1];

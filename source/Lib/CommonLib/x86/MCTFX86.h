@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2022, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -63,6 +63,7 @@ template<X86_VEXT vext>
 int motionErrorLumaInt_SIMD( const Pel* org, const ptrdiff_t origStride, const Pel* buf, const ptrdiff_t buffStride, const int w, const int h, const int besterror )
 {
   int error = 0;
+  __m128i xerror = _mm_setzero_si128();
 
   CHECK( w & 7, "SIMD blockSize needs to be a multiple of 8" );
 
@@ -101,10 +102,8 @@ int motionErrorLumaInt_SIMD( const Pel* org, const ptrdiff_t origStride, const P
       __m128i
       xtmp = _mm256_extractf128_si256( vsum, 1 );
       xtmp = _mm_add_epi32( xtmp, _mm256_castsi256_si128( vsum ) );
-      xtmp = _mm_hadd_epi32( xtmp, xtmp );
-
-      error += _mm_extract_epi32( xtmp, 1 );
-      error += _mm_extract_epi32( xtmp, 0 );
+      xerror = _mm_hadd_epi32( xerror, xtmp );
+      error = _mm_cvtsi128_si32( xerror );
 
       if( error > besterror )
       {
@@ -112,6 +111,9 @@ int motionErrorLumaInt_SIMD( const Pel* org, const ptrdiff_t origStride, const P
       }
     }
 
+    xerror = _mm_hadd_epi32( xerror, xerror );
+    xerror = _mm_hadd_epi32( xerror, xerror );
+    error = _mm_cvtsi128_si32( xerror );
     return error;
   }
 #endif
@@ -120,7 +122,7 @@ int motionErrorLumaInt_SIMD( const Pel* org, const ptrdiff_t origStride, const P
     const Pel* origRowStart   = org + y1 * origStride;
     const Pel* bufferRowStart = buf + y1 * buffStride;
 
-    __m128i xsum = _mm_setzero_si128();
+    __m128i xsum   = _mm_setzero_si128();
 
     for( int x1 = 0; x1 < w; x1 += 8 )
     {
@@ -144,9 +146,8 @@ int motionErrorLumaInt_SIMD( const Pel* org, const ptrdiff_t origStride, const P
       //error += diff * diff;
     }
     
-    xsum   = _mm_hadd_epi32   ( xsum, xsum );
-    error += _mm_extract_epi32( xsum, 0 );
-    error += _mm_extract_epi32( xsum, 1 );
+    xerror = _mm_hadd_epi32   ( xerror, xsum );
+    error  = _mm_cvtsi128_si32( xerror );
 
     if( error > besterror )
     {
@@ -154,6 +155,9 @@ int motionErrorLumaInt_SIMD( const Pel* org, const ptrdiff_t origStride, const P
     }
   }
 
+  xerror = _mm_hadd_epi32( xerror, xerror );
+  xerror = _mm_hadd_epi32( xerror, xerror );
+  error  = _mm_cvtsi128_si32( xerror );
   return error;
 }
 
@@ -162,6 +166,7 @@ int motionErrorLumaFrac_SIMD( const Pel* org, const ptrdiff_t origStride, const 
 {
   int error = 0;
   const int base = -3;
+  __m128i xerror = _mm_setzero_si128();
   
   CHECK( w & 7, "SIMD blockSize needs to be a multiple of 8" );
 
@@ -254,13 +259,11 @@ int motionErrorLumaFrac_SIMD( const Pel* org, const ptrdiff_t origStride, const 
 
           xsum = _mm256_sub_epi16( xsum, xorg );
           xsum = _mm256_madd_epi16( xsum, xsum );
-          xsum = _mm256_hadd_epi32( xsum, xsum );
         
           __m128i
           ysum = _mm_add_epi32( _mm256_castsi256_si128( xsum ), _mm256_extracti128_si256( xsum, 1 ) );
-
-          error += _mm_extract_epi32( ysum, 0 );
-          error += _mm_extract_epi32( ysum, 1 );
+          xerror = _mm_hadd_epi32( xerror, ysum );
+          error = _mm_cvtsi128_si32( xerror );
 
           if( error > besterror )
           {
@@ -273,6 +276,10 @@ int motionErrorLumaFrac_SIMD( const Pel* org, const ptrdiff_t origStride, const 
         }
       }
     }
+
+    xerror = _mm_hadd_epi32( xerror, xerror );
+    xerror = _mm_hadd_epi32( xerror, xerror );
+    error  = _mm_cvtsi128_si32( xerror );
 
     return error;
   }
@@ -362,10 +369,8 @@ int motionErrorLumaFrac_SIMD( const Pel* org, const ptrdiff_t origStride, const 
 
         xsum = _mm_sub_epi16 ( xsum, xorg );
         xsum = _mm_madd_epi16( xsum, xsum );
-        xsum = _mm_hadd_epi32( xsum, xsum );
-
-        error += _mm_extract_epi32( xsum, 0 );
-        error += _mm_extract_epi32( xsum, 1 );
+        xerror = _mm_hadd_epi32( xerror, xsum );
+        error  = _mm_cvtsi128_si32( xerror );
 
         //sum = 0;
         //sum += yFilter[1] * tempArray[y1 + 1][x1];
@@ -405,6 +410,10 @@ int motionErrorLumaFrac_SIMD( const Pel* org, const ptrdiff_t origStride, const 
     }
   }
 
+  xerror = _mm_hadd_epi32( xerror, xerror );
+  xerror = _mm_hadd_epi32( xerror, xerror );
+  error  = _mm_cvtsi128_si32( xerror );
+
   return error;
 }
 
@@ -414,6 +423,7 @@ int motionErrorLumaFrac_loRes_SIMD( const Pel* org, const ptrdiff_t origStride, 
 {
   int error = 0;
   const int base = -1;
+  __m128i xerror = _mm_setzero_si128();
   
   CHECK( w & 7, "SIMD blockSize needs to be a multiple of 8" );
 
@@ -504,10 +514,8 @@ int motionErrorLumaFrac_loRes_SIMD( const Pel* org, const ptrdiff_t origStride, 
 
           __m128i
           ysum = _mm_add_epi32( _mm256_castsi256_si128( xsum ), _mm256_extracti128_si256( xsum, 1 ) );
-          ysum = _mm_hadd_epi32( ysum, ysum );
-
-          error += _mm_extract_epi32( ysum, 0 );
-          error += _mm_extract_epi32( ysum, 1 );
+          xerror = _mm_hadd_epi32( xerror, ysum );
+          error = _mm_cvtsi128_si32( xerror );
 
           if( error > besterror )
           {
@@ -524,6 +532,11 @@ int motionErrorLumaFrac_loRes_SIMD( const Pel* org, const ptrdiff_t origStride, 
     }
 
     GCC_WARNING_RESET
+    
+    xerror = _mm_hadd_epi32( xerror, xerror );
+    xerror = _mm_hadd_epi32( xerror, xerror );
+    error  = _mm_cvtsi128_si32( xerror );
+
     return error;
   }
 #endif 
@@ -602,10 +615,8 @@ int motionErrorLumaFrac_loRes_SIMD( const Pel* org, const ptrdiff_t origStride, 
 
         xsum = _mm_sub_epi16 ( xsum, xorg );
         xsum = _mm_madd_epi16( xsum, xsum );
-        xsum = _mm_hadd_epi32( xsum, xsum );
-
-        error += _mm_extract_epi32( xsum, 0 );
-        error += _mm_extract_epi32( xsum, 1 );
+        xerror = _mm_hadd_epi32( xerror, xsum );
+        error = _mm_cvtsi128_si32( xerror );
 
         //sum = 0;
         //sum += yFilter[1] * tempArray[y1 + 1][x1];
@@ -640,6 +651,10 @@ int motionErrorLumaFrac_loRes_SIMD( const Pel* org, const ptrdiff_t origStride, 
       }
     }
   }
+
+  xerror = _mm_hadd_epi32( xerror, xerror );
+  xerror = _mm_hadd_epi32( xerror, xerror );
+  error  = _mm_cvtsi128_si32( xerror );
 
   return error;
 }
@@ -838,41 +853,127 @@ void applyBlockSIMD( const CPelBuf& src, PelBuf& dst, const CompArea& blk, const
         Pel *dstPel = dst.bufAt( bx, by );
 
   int vnoise[2 * VVENC_MCTF_RANGE] = { 0, };
-  float vsw[2 * VVENC_MCTF_RANGE] = { 0.0f, };
-  float vww[2 * VVENC_MCTF_RANGE] = { 0.0f, };
+  float vsw [2 * VVENC_MCTF_RANGE] = { 0.0f, };
+  float vww [2 * VVENC_MCTF_RANGE] = { 0.0f, };
 
   int minError = 9999999;
 
   for( int i = 0; i < numRefs; i++ )
   {
-    int64_t variance = 0, diffsum = 0;
     const ptrdiff_t refStride = w;
     const Pel *     refPel    = correctedPics[i];
-    for( int y1 = 0; y1 < h; y1++ )
-    {
-      for( int x1 = 0; x1 < w; x1++ )
-      {
-        const Pel pix = *( srcPel + srcStride * y1 + x1 );
-        const Pel ref = *( refPel + refStride * y1 + x1 );
+    __m128i xvar = _mm_setzero_si128(), xdiffsum = _mm_setzero_si128();
 
-        const int diff = pix - ref;
-        variance += diff * diff;
-        if( x1 != w - 1 )
+    // xvar is a sum of squares of differences of 10bit unsigned values
+    //                             \----------------------------------/
+    //                                  still 10 bit
+    //                  \---------------------------------------------/
+    //                              up to 20 bit
+    // leaving 12 bit (2^6*2^6) for the sum, which is ok for blocks up to 64x64, with w and h being usually 8 or 16 (2^3 or 2^4)
+    // diffsum has double the number of entries, so one less bit
+
+    if( w == 4 )
+    {
+      const __m128i xshufr = _mm_setr_epi8( 0, 1, 2, 3, 4, 5, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 );
+
+      for( int y1 = 0; y1 < h; y1++ )
+      {
+        for( int x1 = 0; x1 < w; x1 += 8 )
         {
-          const Pel pixR = *( srcPel + srcStride * y1 + x1 + 1 );
-          const Pel refR = *( refPel + refStride * y1 + x1 + 1 );
-          const int diffR = pixR - refR;
-          diffsum += ( diffR - diff ) * ( diffR - diff );
-        }
-        if( y1 != h - 1 )
-        {
-          const Pel pixD = *( srcPel + srcStride * y1 + x1 + srcStride );
-          const Pel refD = *( refPel + refStride * y1 + x1 + refStride );
-          const int diffD = pixD - refD;
-          diffsum += ( diffD - diff ) * ( diffD - diff );
+          const Pel *pix0 = srcPel + srcStride * y1 + x1;
+          const Pel *ref0 = refPel + refStride * y1 + x1;
+          const Pel *pixr = pix0 + 1;
+          const Pel* refr = ref0 + 1;
+          const Pel* pixd = pix0 + srcStride;
+          const Pel* refd = ref0 + refStride;
+
+          __m128i xpix0 = _mm_loadl_epi64( ( const __m128i* ) pix0 );
+          __m128i xref0 = _mm_loadl_epi64( ( const __m128i* ) ref0 );
+          __m128i xpixr = _mm_loadl_epi64( ( const __m128i* ) pixr );
+          __m128i xrefr = _mm_loadl_epi64( ( const __m128i* ) refr );
+
+          __m128i xdiff = _mm_sub_epi16( xpix0, xref0 );
+          xvar = _mm_add_epi32( xvar, _mm_madd_epi16( xdiff, xdiff ) );
+
+          if( y1 + 1 != h )
+          {
+            __m128i xpixd  = _mm_loadl_epi64( ( const __m128i* ) pixd );
+            __m128i xrefd  = _mm_loadl_epi64( ( const __m128i* ) refd );
+            __m128i xdiffd = _mm_sub_epi16( xpixd, xrefd );
+            xdiffd = _mm_sub_epi16( xdiffd, xdiff );
+            xdiffsum = _mm_add_epi32( xdiffsum, _mm_madd_epi16( xdiffd, xdiffd ) );
+          }
+
+          if( x1 + 4 == w )
+          {
+            xpix0 = _mm_shuffle_epi8( xpix0, xshufr );
+            xpixr = _mm_shuffle_epi8( xpixr, xshufr );
+            xref0 = _mm_shuffle_epi8( xref0, xshufr );
+            xrefr = _mm_shuffle_epi8( xrefr, xshufr );
+
+            xdiff = _mm_sub_epi16( xpix0, xref0 );
+          }
+
+          __m128i xdiffr = _mm_sub_epi16( xpixr, xrefr );
+          xdiffr = _mm_sub_epi16( xdiffr, xdiff );
+          xdiffsum = _mm_add_epi32( xdiffsum, _mm_madd_epi16( xdiffr, xdiffr ) );
         }
       }
     }
+    else
+    {
+      const __m128i xshufr = _mm_setr_epi8( 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, -1, -1 );
+
+      for( int y1 = 0; y1 < h; y1++ )
+      {
+        for( int x1 = 0; x1 < w; x1 += 8 )
+        {
+          const Pel *pix0 = srcPel + srcStride * y1 + x1;
+          const Pel *ref0 = refPel + refStride * y1 + x1;
+          const Pel *pixr = pix0 + 1;
+          const Pel* refr = ref0 + 1;
+          const Pel* pixd = pix0 + srcStride;
+          const Pel* refd = ref0 + refStride;
+
+          __m128i xpix0 = _mm_loadu_si128( ( const __m128i* ) pix0 );
+          __m128i xref0 = _mm_loadu_si128( ( const __m128i* ) ref0 );
+          __m128i xpixr = _mm_loadu_si128( ( const __m128i* ) pixr );
+          __m128i xrefr = _mm_loadu_si128( ( const __m128i* ) refr );
+
+          __m128i xdiff = _mm_sub_epi16( xpix0, xref0 );
+          xvar = _mm_add_epi32( xvar, _mm_madd_epi16( xdiff, xdiff ) );
+
+          if( y1 + 1 != h )
+          {
+            __m128i xpixd  = _mm_loadu_si128( ( const __m128i* ) pixd );
+            __m128i xrefd  = _mm_loadu_si128( ( const __m128i* ) refd );
+            __m128i xdiffd = _mm_sub_epi16( xpixd, xrefd );
+            xdiffd = _mm_sub_epi16( xdiffd, xdiff );
+            xdiffsum = _mm_add_epi32( xdiffsum, _mm_madd_epi16( xdiffd, xdiffd ) );
+          }
+
+          if( x1 + 8 == w )
+          {
+            xpix0 = _mm_shuffle_epi8( xpix0, xshufr );
+            xpixr = _mm_shuffle_epi8( xpixr, xshufr );
+            xref0 = _mm_shuffle_epi8( xref0, xshufr );
+            xrefr = _mm_shuffle_epi8( xrefr, xshufr );
+
+            xdiff = _mm_sub_epi16( xpix0, xref0 );
+          }
+
+          __m128i xdiffr = _mm_sub_epi16( xpixr, xrefr );
+          xdiffr = _mm_sub_epi16( xdiffr, xdiff );
+          xdiffsum = _mm_add_epi32( xdiffsum, _mm_madd_epi16( xdiffr, xdiffr ) );
+        }
+      }
+    }
+
+    xvar = _mm_hadd_epi32( xvar, xdiffsum );
+    xvar = _mm_hadd_epi32( xvar, xvar );
+    int64_t variance = _mm_cvtsi128_si32( xvar );
+    int64_t diffsum  = _mm_extract_epi32( xvar, 1 );
+
     const int cntV = w * h;
     const int cntD = 2 * cntV - w - h;
     vnoise[i] = ( int ) ( ( ( 15.0 * cntD / cntV * variance + 5.0 ) / ( diffsum + 5.0 ) ) + 0.5 );
@@ -971,6 +1072,49 @@ void applyBlockSIMD( const CPelBuf& src, PelBuf& dst, const CompArea& blk, const
   }
 }
 
+template<X86_VEXT vext>
+double calcVarSse( const Pel* org, const ptrdiff_t origStride, const int w, const int h )
+{
+  // calculate average
+  __m128i xavg32 = _mm_setzero_si128();
+  __m128i xavg16 = _mm_setzero_si128();
+  const __m128i xone = _mm_set1_epi16( 1 );
+  for( int y1 = 0; y1 < h; y1++ )
+  {
+    xavg16 = _mm_setzero_si128();
+    for( int x1 = 0; x1 < w; x1 += 8 )
+    {
+      xavg16 = _mm_add_epi16( xavg16, _mm_loadu_si128( ( const __m128i* ) ( org + x1 + y1 * origStride ) ) );
+    }
+    xavg32 = _mm_add_epi32( xavg32, _mm_madd_epi16( xone, xavg16 ) );
+  }
+
+  xavg32 = _mm_hadd_epi32( xavg32, xavg32 );
+  xavg32 = _mm_hadd_epi32( xavg32, xavg32 );
+  xavg32 = _mm_shuffle_epi32( xavg32, 0 );
+  int shift = Log2( w ) + Log2( h ) - 4;
+  xavg32 = _mm_srai_epi32( xavg32, shift );
+  xavg16 = _mm_packs_epi32( xavg32, xavg32 );
+
+  // calculate variance
+  __m128i xvar = _mm_setzero_si128();
+  for( int y1 = 0; y1 < h; y1++ )
+  {
+    for( int x1 = 0; x1 < w; x1 += 8 )
+    {
+      __m128i xpix = _mm_loadu_si128( ( const __m128i* ) ( org + x1 + y1 * origStride ) );
+      xpix = _mm_slli_epi16( xpix, 4 );
+      xpix = _mm_sub_epi16( xpix, xavg16 );
+      xpix = _mm_madd_epi16( xpix, xpix );
+      xvar = _mm_add_epi64( xvar, _mm_cvtepi32_epi64( xpix ) );
+      xvar = _mm_add_epi64( xvar, _mm_cvtepi32_epi64( _mm_unpackhi_epi64( xpix, xpix ) ) );
+    }
+  }
+
+  xvar = _mm_add_epi64( xvar, _mm_unpackhi_epi64( xvar, xvar ) );
+
+  return _mm_cvtsi128_si64( xvar ) / 256.0;
+}
 
 template<X86_VEXT vext>
 void MCTF::_initMCTF_X86()
@@ -983,6 +1127,7 @@ void MCTF::_initMCTF_X86()
   m_applyFrac[1][0] = applyFrac6tap_SIMD_4x<vext>;
 
   m_applyBlock      = applyBlockSIMD<vext>;
+  m_calcVar         = calcVarSse<vext>;
 }
 
 template
