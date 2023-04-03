@@ -140,6 +140,19 @@ public:
     }
     else
     {
+      if( !cLogoFilename.empty() )
+      {
+        std::stringstream strstr;
+        if ( 0 != m_cLogoRenderer.init( cLogoFilename, m_bufferChrFmt, internalBitDepth, strstr ) )
+        {
+          if( !strstr.str().empty() )
+            m_lastError = strstr.str();
+          else
+            m_lastError = "failed to open Logo overlay renderer";
+          return -1;
+        }
+      }
+
       if( !strcmp( fileName.c_str(), "-" ) )
       {
         m_readStdin = true;
@@ -167,19 +180,6 @@ public:
         std::string headerline;
         getline(inStream, headerline);  // jump over y4m header
         m_y4mMode   = true;
-      }
-
-      if( !cLogoFilename.empty() )
-      {
-        std::stringstream strstr;
-        if ( 0 != m_cLogoRenderer.init( cLogoFilename, m_bufferChrFmt, internalBitDepth, strstr ) )
-        {
-          if( !strstr.str().empty() )
-            m_lastError = strstr.str();
-          else
-            m_lastError = "failed to open Logo overlay renderer";
-          return -1;
-        }
       }
     }
     return 0;
@@ -335,13 +335,6 @@ public:
 
       if ( m_bufferChrFmt == VVENC_CHROMA_400 && comp)
         continue;
-
-      if ( ! FileIOHelper::verifyYuvPlane( yuvPlane, m_fileBitdepth ) )
-      {
-        eof = true;
-        m_lastError = "Source image contains values outside the specified bit range!";
-        return -1;
-      }
 
       FileIOHelper::scaleYuvPlane( yuvPlane, yuvPlane, m_bitdepthShift, minVal, maxVal );
     }

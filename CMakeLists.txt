@@ -10,10 +10,10 @@ if( NOT CMAKE_VERSION VERSION_LESS 3.13.0 )
 endif()
 
 # project name
-project( vvenc VERSION 1.7.0 )
+project( vvenc VERSION 1.8.0 )
 
 # set alternative version numbering for release candidates
-#set( PROJECT_VERSION_RC rc1 )
+set( PROJECT_VERSION_RC rc1 )
 if( PROJECT_VERSION_RC )
     set( PROJECT_VERSION "${PROJECT_VERSION}-${PROJECT_VERSION_RC}" )
 endif()
@@ -72,6 +72,8 @@ set( VVENC_ENABLE_BUILD_TYPE_POSTFIX        OFF CACHE BOOL   "Enable or disable 
 set( VVENC_ENABLE_LINK_TIME_OPT             ON  CACHE BOOL   "Enable link time optimization for release and profile builds" )
 
 set( VVENC_ENABLE_THIRDPARTY_JSON           ON  CACHE BOOL   "Enable use of thirdparty json library" )
+
+set( VVENC_INSTALL_FULLFEATURE_APP		    OFF CACHE BOOL   "Install the full-feature app: vvencFFapp" )
 
 if( CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
     CMAKE_CXX_COMPILER_ID STREQUAL "Clang" )

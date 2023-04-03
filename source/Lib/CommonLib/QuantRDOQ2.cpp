@@ -257,7 +257,6 @@ void QuantRDOQ2::quant( TransformUnit &tu, const ComponentID compID, const CCoef
   const uint32_t uiHeight   = rect.height;
 
   const CCoeffBuf&  piCoef   = pSrc;
-        CoeffSigBuf piQCoef  = tu.getCoeffs(compID);
 
   const bool useTransformSkip = tu.mtsIdx[compID]==MTS_SKIP;
 
@@ -271,11 +270,11 @@ void QuantRDOQ2::quant( TransformUnit &tu, const ComponentID compID, const CCoef
 
   if( useRDOQ )
   {
-    if (!m_useSelectiveRDOQ || xNeedRDOQ(tu, compID, piCoef, cQP))
+    if( !tu.cs->picture->useScSelectiveRdoq || xNeedRDOQ( tu, compID, piCoef, cQP ) )
     {
       if( useTransformSkip )
       {
-        if(tu.cu->bdpcmM[toChannelType(compID)])
+        if( tu.cu->bdpcmM[toChannelType( compID )] )
         {
           forwardRDPCM( tu, compID, pSrc, uiAbsSum, cQP, ctx );
         }
@@ -291,8 +290,7 @@ void QuantRDOQ2::quant( TransformUnit &tu, const ComponentID compID, const CCoef
     }
     else
     {
-      piQCoef.fill(0);
-      uiAbsSum = 0;
+      uiAbsSum    = 0;
       tu.lastPos[compID] = -1;
     }
   }
@@ -352,52 +350,52 @@ inline cost_t QuantRDOQ2::xiGetICRateCost( const uint32_t     uiAbsLevel,
   }
   else
   {
-  const uint32_t cthres = 4;
-  if( uiAbsLevel >= cthres )
-  {
-    uint32_t symbol = ( uiAbsLevel - cthres ) >> 1;
-    uint32_t length;
-    const int threshold = COEF_REMAIN_BIN_REDUCTION;
-    if( symbol < ( threshold << ui16AbsGoRice ) )
+    const uint32_t cthres = 4;
+    if( uiAbsLevel >= cthres )
     {
-      length = symbol >> ui16AbsGoRice;
-      iRate += ( length + 1 + ui16AbsGoRice ) << SCALE_BITS;
+      uint32_t symbol = ( uiAbsLevel - cthres ) >> 1;
+      uint32_t length;
+      const int threshold = COEF_REMAIN_BIN_REDUCTION;
+      if( symbol < ( threshold << ui16AbsGoRice ) )
+      {
+        length = symbol >> ui16AbsGoRice;
+        iRate += ( length + 1 + ui16AbsGoRice ) << SCALE_BITS;
+      }
+      else
+      {
+        length = ui16AbsGoRice;
+        symbol = symbol - ( threshold << ui16AbsGoRice );
+        while( symbol >= ( 1 << length ) )
+        {
+          symbol -= ( 1 << ( length++ ) );
+        }
+        iRate += ( threshold + length + 1 - ui16AbsGoRice + length ) << SCALE_BITS;
+      }
+
+      iRate += fracBitsGt1.intBits[1];
+      iRate += fracBitsPar.intBits[( uiAbsLevel - 2 ) & 1];
+      iRate += fracBitsGt2.intBits[1];
+    }
+    else if( uiAbsLevel == 1 )
+    {
+      iRate += fracBitsGt1.intBits[0];
+    }
+    else if( uiAbsLevel == 2 )
+    {
+      iRate += fracBitsGt1.intBits[1];
+      iRate += fracBitsPar.intBits[0];
+      iRate += fracBitsGt2.intBits[0];
+    }
+    else if( uiAbsLevel == 3 )
+    {
+      iRate += fracBitsGt1.intBits[1];
+      iRate += fracBitsPar.intBits[1];
+      iRate += fracBitsGt2.intBits[0];
     }
     else
     {
-      length = ui16AbsGoRice;
-      symbol = symbol - ( threshold << ui16AbsGoRice );
-      while( symbol >= ( 1 << length ) )
-      {
-        symbol -= ( 1 << ( length++ ) );
-      }
-      iRate += ( threshold + length + 1 - ui16AbsGoRice + length ) << SCALE_BITS;
+      iRate = 0;
     }
-
-    iRate += fracBitsGt1.intBits[1];
-    iRate += fracBitsPar.intBits[( uiAbsLevel - 2 ) & 1];
-    iRate += fracBitsGt2.intBits[1];
-  }
-  else if( uiAbsLevel == 1 )
-  {
-    iRate += fracBitsGt1.intBits[0];
-  }
-  else if( uiAbsLevel == 2 )
-  {
-    iRate += fracBitsGt1.intBits[1];
-    iRate += fracBitsPar.intBits[0];
-    iRate += fracBitsGt2.intBits[0];
-  }
-  else if( uiAbsLevel == 3 )
-  {
-    iRate += fracBitsGt1.intBits[1];
-    iRate += fracBitsPar.intBits[1];
-    iRate += fracBitsGt2.intBits[0];
-  }
-  else
-  {
-    iRate = 0;
-  }
   }
   return xiGetICost( (int)iRate );
 }
@@ -477,7 +475,7 @@ static inline cost_t _dist( cost_t iErr, cost_t iErrScale, int64_t iErrScaleShif
 template< bool bSBH, bool bUseScalingList >
 int QuantRDOQ2::xRateDistOptQuantFast( TransformUnit &tu, const ComponentID &compID, const CCoeffBuf &pSrc, TCoeff &uiAbsSum, const QpParam &cQP, const Ctx &ctx )
 {
-  CoeffCodingContext cctx( tu, compID, bSBH, m_tplBuf );
+  CoeffCodingContext cctx( tu, compID, bSBH, false, m_tplBuf );
   const FracBitsAccess& fracBits = ctx.getFracBitsAcess();
 
   const SPS &sps            = *tu.cs->sps;
@@ -489,7 +487,7 @@ int QuantRDOQ2::xRateDistOptQuantFast( TransformUnit &tu, const ComponentID &com
 
   const int  maxLog2TrDynamicRange = sps.getMaxLog2TrDynamicRange(chType);
 
-  if( compID != COMP_Cr )
+  if( compID != COMP_Cr || !tu.cbf[COMP_Cb] )
     xInitLastPosBitsTab( cctx, uiWidth, uiHeight, chType, fracBits );
 
   /* for 422 chroma blocks, the effective scaling applied during transformation is not a power of 2, hence it cannot be
@@ -646,7 +644,7 @@ int QuantRDOQ2::xRateDistOptQuantFast( TransformUnit &tu, const ComponentID &com
         for( int xScanPosinCG = iScanPosinCG, xScanPos = iScanPos; allSmaller && xScanPosinCG >= 0; xScanPosinCG--, xScanPos-- )
         {
           const uint32_t uiBlkPos = cctx.blockPos( xScanPos );
-          allSmaller &= abs( plSrcCoeff[uiBlkPos] ) <= useThres;
+          allSmaller &= std::abs( plSrcCoeff[uiBlkPos] ) <= useThres;
         }
 
         if( allSmaller )
@@ -669,7 +667,7 @@ int QuantRDOQ2::xRateDistOptQuantFast( TransformUnit &tu, const ComponentID &com
         if( bUseScalingList ){ quantScale = quantScaleList[uiBlkPos]; }
         else{                  quantScale = defaultQuantScale; }
         
-        const uint32_t uiMaxAbsLevel = ( abs( plSrcCoeff[uiBlkPos] ) * quantScale + iQOffset ) >> iQBits;
+        const uint32_t uiMaxAbsLevel = ( std::abs( plSrcCoeff[uiBlkPos] ) * quantScale + iQOffset ) >> iQBits;
 
         if( uiMaxAbsLevel )
         {
@@ -708,7 +706,7 @@ int QuantRDOQ2::xRateDistOptQuantFast( TransformUnit &tu, const ComponentID &com
         quantScale = defaultQuantScale;
         iErrScale  = defaultErrScale;
       }
-      const int iScaledLevel = abs( plSrcCoeff[uiBlkPos] ) * quantScale;
+      const int iScaledLevel = std::abs( plSrcCoeff[uiBlkPos] ) * quantScale;
       const int iAbsLevel    = ( iScaledLevel + iQOffset ) >> iQBits;
 
       //============ Set context models ===============
@@ -733,11 +731,6 @@ int QuantRDOQ2::xRateDistOptQuantFast( TransformUnit &tu, const ComponentID &com
         unsigned  sumAbs = cctx.templateAbsSum( iScanPos, piDstCoeff, 0 );
         goRiceParam      = g_auiGoRiceParsCoeff   [ sumAbs ];
         goRiceZero       = g_auiGoRicePosCoeff0(0, goRiceParam);
-      }
-      else if( iScanPos != iLastScanPos && iAbsLevel )
-      {
-        int  sumAll = cctx.templateAbsSum( iScanPos, piDstCoeff, 4 );
-        goRiceParam = g_auiGoRiceParsCoeff[ sumAll ];
       }
 
 #if ENABLE_TRACING
@@ -778,6 +771,13 @@ int QuantRDOQ2::xRateDistOptQuantFast( TransformUnit &tu, const ComponentID &com
         //===== coefficient level estimation =====
         const int iFloor = (int)( iScaledLevel >> iQBits );
         const int iCeil  = iFloor + 1;
+
+        if( remRegBins >= 4 && iScanPos != iLastScanPos && iCeil >= 4 )
+        {
+          int  sumAll = cctx.templateAbsSum( iScanPos, piDstCoeff, 4 );
+          goRiceParam = g_auiGoRiceParsCoeff[ sumAll ];
+        }
+
         if( iScanPos == iLastScanPos )
         {
           // =======================             =======================
@@ -1010,7 +1010,7 @@ int QuantRDOQ2::xRateDistOptQuantFast( TransformUnit &tu, const ComponentID &com
                 uint32_t uiBlkPos = cctx.blockPos( iScanPosTmp );
                 if( piDstCoeff[uiBlkPos] )
                 {
-                  int absLevel = abs( piDstCoeff[uiBlkPos] );
+                  int absLevel = std::abs( piDstCoeff[uiBlkPos] );
                   cctx.remAbsVal1stPass( iScanPosTmp, std::min( absLevel, 4 + ( absLevel & 1 ) ) );
                   piDstCoeff[uiBlkPos] = 0;
                 }
@@ -1082,7 +1082,7 @@ int QuantRDOQ2::xRateDistOptQuantFast( TransformUnit &tu, const ComponentID &com
           const int uiBlkPos = cctx.blockPos( iScanPosTmp );
           if( piDstCoeff[uiBlkPos] )
           {
-            int absLevel = abs( piDstCoeff[uiBlkPos] );
+            int absLevel = std::abs( piDstCoeff[uiBlkPos] );
             cctx.remAbsVal1stPass( iScanPosTmp, std::min( absLevel, 4 + ( absLevel & 1 ) ) );
             piDstCoeff[uiBlkPos] = 0;
           }
@@ -1151,10 +1151,10 @@ int QuantRDOQ2::xRateDistOptQuantFast( TransformUnit &tu, const ComponentID &com
                 iMinCostPos   = n;
               }
             }
-            const int oldAbsVal = abs( piDstCoeff[cctx.blockPos( iMinCostPos + iSubPos )] );
+            const int oldAbsVal = std::abs( piDstCoeff[cctx.blockPos( iMinCostPos + iSubPos )] );
             if( oldAbsVal ) cctx.remAbsVal1stPass( iMinCostPos + iSubPos, std::min( oldAbsVal, 4 + ( oldAbsVal & 1 ) ) );
             piDstCoeff[ cctx.blockPos( iMinCostPos + iSubPos ) ] += piAddSBH[iMinCostPos];
-            const int absVal = abs( piDstCoeff[cctx.blockPos( iMinCostPos + iSubPos )] );
+            const int absVal = std::abs( piDstCoeff[cctx.blockPos( iMinCostPos + iSubPos )] );
             if( absVal ) cctx.absVal1stPass( iMinCostPos + iSubPos, std::min( absVal, 4 + ( absVal & 1 ) ) );
             uiAbsSumCG   += piAddSBH[iMinCostPos];
             iCodedCostCG += iMinCostDelta;

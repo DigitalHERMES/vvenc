@@ -57,7 +57,7 @@ namespace vvenc {
 
 static const int prefix_ctx[7]  = { 0, 0, 0, 3, 6, 10, 15 };
 
-CoeffCodingContext::CoeffCodingContext( const TransformUnit& tu, ComponentID component, bool signHide, CtxTpl* tplBuf, bool bdpcm )
+CoeffCodingContext::CoeffCodingContext( const TransformUnit& tu, ComponentID component, bool signHide, bool bdpcm, CtxTpl* tplBuf )
   : m_compID                    (component)
   , m_chType                    (toChannelType(m_compID))
   , m_width                     (tu.block(m_compID).width)
@@ -249,8 +249,6 @@ void MergeCtx::setMergeInfo( CodingUnit& cu, int candIdx ) const
   cu.mvpNum [REF_PIC_LIST_1]    = NOT_VALID;
   if( CU::isIBC( cu ) )
   {
-    cu.bv   = cu.mv[REF_PIC_LIST_0][0];
-    cu.bv   .changePrecision( MV_PRECISION_INTERNAL, MV_PRECISION_INT ); // used for only integer resolution
     cu.imv  = cu.imv == IMV_HPEL ? 0 : cu.imv;
   }
   cu.BcwIdx = ( interDirNeighbours[candIdx] == 3 ) ? BcwIdx[candIdx] : BCW_DEFAULT;

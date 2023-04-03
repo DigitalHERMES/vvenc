@@ -91,7 +91,7 @@ void EncPicture::compressPicture( Picture& pic, EncGOP& gopEncoder )
   pic.createTempBuffers( pic.cs->pcv->maxCUSize );
   pic.cs->createCoeffs();
   pic.cs->createTempBuffers( true );
-  pic.cs->initStructData( MAX_INT, false, nullptr, true );
+  pic.cs->initStructData( MAX_INT, false, nullptr );
 
   if( pic.useScLMCS && m_pcEncCfg->m_reshapeSignalType == RESHAPE_SIGNAL_PQ && m_pcEncCfg->m_alf )
   {
@@ -114,6 +114,7 @@ void EncPicture::compressPicture( Picture& pic, EncGOP& gopEncoder )
 
   // compress current slice
   pic.cs->slice = pic.slices[0];
+  std::fill( pic.ctuSlice.begin(), pic.ctuSlice.end(), pic.slices[0] );
   m_SliceEncoder.compressSlice( &pic );
 
   ITT_TASKEND( itt_domain_picEncoder, itt_handle_start );
@@ -264,7 +265,7 @@ void EncPicture::xCalcDistortion( Picture& pic, const SPS& sps )
     const uint32_t maxval = 255 << (bitDepth - 8);
     const uint32_t size   = width * height;
     const double fRefValue = (double)maxval * maxval * size;
-    pic.psnr[comp] = uiSSDtemp ? 10.0 * log10(fRefValue / (double)uiSSDtemp) : 999.99;
+    pic.psnr[comp] = uiSSDtemp ? 10.0 * log10(fRefValue / (double)uiSSDtemp) : MAX_DOUBLE;
     pic.mse [comp] = (double)uiSSDtemp / size;
   }
 }
@@ -274,14 +275,6 @@ void EncPicture::xInitPicEncoder( Picture& pic )
   Slice* slice = pic.cs->slice;
 
   CHECK( slice != pic.slices[0], "Slice pointers don't match!" );
-
-  if( m_pcEncCfg->m_RCTargetBitrate > 0 )
-  {
-    pic.picInitialQP     = -1;
-    pic.picInitialLambda = -1.0;
-
-    m_pcRateCtrl->initRateControlPic( pic, slice, pic.picInitialQP, pic.picInitialLambda );
-  }
 
   m_SliceEncoder.initPic( &pic );
 

@@ -157,7 +157,7 @@ bool tryDecodePicture( Picture* pcEncPic, const int expectedPoc, const std::stri
                   pcEncPic->createTempBuffers( pic->cs->pcv->maxCUSize );
                   pcEncPic->cs->createCoeffs();
                   pcEncPic->cs->createTempBuffers( true );
-                  pcEncPic->cs->initStructData( MAX_INT, false, nullptr, true );
+                  pcEncPic->cs->initStructData( MAX_INT, false, nullptr );
 
                   CHECK( pcEncPic->slices.size() == 0, "at least one slice should be available" );
 
@@ -225,6 +225,14 @@ bool tryDecodePicture( Picture* pcEncPic, const int expectedPoc, const std::stri
                     if( CS::isDualITree( *pcEncPic->cs ) )
                     {
                       pcEncPic->cs->copyStructure( *pic->cs, CH_C, TREE_D, true, true );
+                    }
+                  }
+
+                  for( const auto* slice : pcEncPic->slices )
+                  {
+                    for( int ctu : slice->sliceMap.ctuAddrInSlice )
+                    {
+                      pcEncPic->ctuSlice[ctu] = slice;
                     }
                   }
 
@@ -953,7 +961,8 @@ void DecLib::xActivateParameterSets( const int layerId)
 
     if (NULL == pps->pcv)
     {
-      m_parameterSetManager.getPPS( m_picHeader.ppsId )->pcv = new PreCalcValues( *sps, *pps, false );
+      const unsigned _maxQtSize[3] = { sps->CTUSize, sps->CTUSize, sps->CTUSize };
+      m_parameterSetManager.getPPS( m_picHeader.ppsId )->pcv = new PreCalcValues( *sps, *pps, _maxQtSize, false );
     }
     m_parameterSetManager.clearSPSChangedFlag(sps->spsId);
     m_parameterSetManager.clearPPSChangedFlag(pps->ppsId);
@@ -1028,7 +1037,7 @@ void DecLib::xActivateParameterSets( const int layerId)
     m_pic->createTempBuffers( m_pic->cs->pps->pcv->maxCUSize );
     m_pic->cs->createCoeffs();
     m_pic->cs->createTempBuffers( true );
-    m_pic->cs->initStructData( MAX_INT, false, nullptr, true );
+    m_pic->cs->initStructData( MAX_INT, false, nullptr );
 
     m_pic->allocateNewSlice();
     // make the slice-pilot a real slice, and set up the slice-pilot for the next slice
@@ -1071,7 +1080,7 @@ void DecLib::xActivateParameterSets( const int layerId)
     // Recursive structure
     m_cCuDecoder.init( &m_cTrQuant, &m_cIntraPred, &m_cInterPred, sps->chromaFormatIdc );
 
-    m_cTrQuant.init( nullptr, sps->getMaxTbSize(), false, false, false, false, false );
+    m_cTrQuant.init( nullptr, 0, false, false, false, false );
     // RdCost
     m_cRdCost.setCostMode ( VVENC_COST_STANDARD_LOSSY ); // not used in decoder side RdCost stuff -> set to default
     // RdCost

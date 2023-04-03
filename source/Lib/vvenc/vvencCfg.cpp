@@ -55,6 +55,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <math.h>
 #include <thread>
+#include <iomanip>
 
 #include "apputils/VVEncAppCfg.h"
 
@@ -331,7 +332,7 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   c->m_SourceHeight                            = 0;             ///< source height in pixel (when interlaced = field height)
   c->m_FrameRate                               = 0;             ///< source frame-rates (Hz) Numerator
   c->m_FrameScale                              = 1;             ///< source frame-rates (Hz) Denominator
-  c->m_TicksPerSecond                          = 27000000;      ///< ticks per second for dts generation (default: 27000000, 1..27000000, -1: ticks per frame=1)
+  c->m_TicksPerSecond                          = VVENC_TICKS_PER_SEC_DEF; ///< ticks per second for dts generation (default: 27000000, 1..27000000, -1: ticks per frame=1)
 
   c->m_framesToBeEncoded                       = 0;             ///< number of encoded frames
 
@@ -508,7 +509,6 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   c->m_IntraEstDecBit                          = 1;
 
   c->m_RCInitialQP                             = 0;
-  c->m_RCForceIntraQP                          = false;
 
   c->m_motionEstimationSearchMethod            = VVENC_MESEARCH_DIAMOND;
   c->m_motionEstimationSearchMethodSCC         = 0;
@@ -671,8 +671,9 @@ VVENC_DECL void vvenc_config_default(vvenc_config *c )
   c->m_addGOP32refPics                         = false;
   c->m_numRefPics                              = 0;
   c->m_numRefPicsSCC                           = -1;
+  
+  c->m_FirstPassMode                           = 0;
 
-  memset( c->m_reservedInt, 0, sizeof(c->m_reservedInt) );
   memset( c->m_reservedFlag, 0, sizeof(c->m_reservedFlag) );
   memset( c->m_reservedDouble, 0, sizeof(c->m_reservedDouble) );
 
@@ -706,7 +707,30 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
   vvenc_confirmParameter( c, c->m_FrameRate <= 0,                                                        "Frame rate must be greater than 0" );
   vvenc_confirmParameter( c, c->m_FrameScale <= 0,                                                       "Frame scale must be greater than 0" );
   vvenc_confirmParameter( c, c->m_TicksPerSecond < -1 || c->m_TicksPerSecond == 0 || c->m_TicksPerSecond > 27000000, "TicksPerSecond must be in range from 1 to 27000000, or -1 for ticks per frame=1" );
-  vvenc_confirmParameter( c, ( c->m_TicksPerSecond > 0 ) && ((int64_t)c->m_TicksPerSecond*(int64_t)c->m_FrameScale)%c->m_FrameRate, "TicksPerSecond should be a multiple of FrameRate/Framescale. Use 27000000 for NTSC content" );
+
+  std::stringstream css;
+  if ( c->m_FrameScale != 1  && c->m_FrameScale != 1001 && c->m_TicksPerSecond == VVENC_TICKS_PER_SEC_DEF )
+  {
+    double dFrameRate = c->m_FrameRate/(double)c->m_FrameScale;
+    css << "Detected non-standard Frame Rate " << c->m_FrameRate << "/" << c->m_FrameScale;
+    css << " (" << std::fixed << std:: setprecision(2) << dFrameRate <<  std::setprecision(-1) << " Hz).";
+    css << " Default TicksPerSecond (" << VVENC_TICKS_PER_SEC_DEF << ") can not be used.";
+
+    if ( c->m_FrameRate * c->m_FrameScale <= VVENC_TICKS_PER_SEC_DEF )
+    {
+      css << " possible TicksPerSecond: " << (c->m_FrameRate * c->m_FrameScale) << std::endl;
+    }
+    else
+    {
+      css << " cannot find a proper value for TicksPerSecond in the range (1-" << VVENC_TICKS_PER_SEC_DEF << ")" << std::endl;
+    }
+  }
+  else
+  {
+    css << "TicksPerSecond must be a multiple of FrameRate/Framescale (" << c->m_FrameRate << "/" << c->m_FrameScale << "). Use 27000000 for NTSC content"  << std::endl;
+  }
+  vvenc_confirmParameter( c, ( c->m_TicksPerSecond > 0 ) && ((int64_t)c->m_TicksPerSecond*(int64_t)c->m_FrameScale)%c->m_FrameRate, css.str().c_str() );
+
 
   vvenc_confirmParameter( c, c->m_numThreads < -1 || c->m_numThreads > 256,                              "Number of threads out of range (-1 <= t <= 256)");
 
@@ -760,6 +784,8 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
   vvenc_confirmParameter( c, c->m_RCTargetBitrate == VVENC_RC_OFF && ( c->m_QP < 0 || c->m_QP > vvenc::MAX_QP ), "QP exceeds supported range (0 to 63)" );
 
   vvenc_confirmParameter( c, c->m_RCTargetBitrate != VVENC_RC_OFF && ( c->m_RCTargetBitrate < 0 || c->m_RCTargetBitrate > 800000000 ), "TargetBitrate must be between 0 - 800000000" );
+
+  vvenc_confirmParameter( c, c->m_RCTargetBitrate != VVENC_RC_OFF && ( c->m_FirstPassMode < 0 || c->m_FirstPassMode > 1 ), "FirstPassMode must be 0 or 1" );
 
   if ( c->m_internChromaFormat < 0 || c->m_internChromaFormat >= VVENC_NUM_CHROMA_FORMAT )
   {
@@ -1565,7 +1591,7 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *c )
   if (c->m_Affine > 1)
   {
     c->m_PROF = bool(c->m_Affine);
-    c->m_AffineType = (c->m_Affine == 2) ? true : false;
+    c->m_AffineType = (c->m_Affine > 1) ? true : false;
   }
 
   // check char array and reset them, if they seems to be unset
@@ -1788,7 +1814,7 @@ static bool checkCfgParameter( vvenc_config *c )
   vvenc_confirmParameter( c, c->m_EDO < 0 || c->m_EDO > 2,                    "EDO out of range [0..2]" );
   vvenc_confirmParameter( c, c->m_TMVPModeId < 0 || c->m_TMVPModeId > 2,      "TMVPMode out of range [0..2]" );
   vvenc_confirmParameter( c, c->m_AMVRspeed < 0 || c->m_AMVRspeed > 7,        "AMVR/IMV out of range [0..7]" );
-  vvenc_confirmParameter( c, c->m_Affine < 0 || c->m_Affine > 2,              "Affine out of range [0..2]" );
+  vvenc_confirmParameter( c, c->m_Affine < 0 || c->m_Affine > 5,              "Affine out of range [0..5]" );
   vvenc_confirmParameter( c, c->m_MMVD < 0 || c->m_MMVD > 4,                  "MMVD out of range [0..4]" );
   vvenc_confirmParameter( c, c->m_SMVD < 0 || c->m_SMVD > 3,                  "SMVD out of range [0..3]" );
   vvenc_confirmParameter( c, c->m_Geo  < 0 || c->m_Geo  > 3,                  "Geo out of range [0..3]" );
@@ -2257,7 +2283,7 @@ VVENC_DECL int vvenc_init_default( vvenc_config *c, int width, int height, int f
     default: break;
   }
 
-  c->m_TicksPerSecond      = 27000000;                 // ticks per second for dts generation
+  c->m_TicksPerSecond      = VVENC_TICKS_PER_SEC_DEF;  // ticks per second for dts generation
 
   c->m_inputBitDepth[0]    = 8;                        // input bitdepth
   c->m_internalBitDepth[0] = 10;                       // internal bitdepth
@@ -2292,7 +2318,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
   c->m_bUseHADME                       = true;
   c->m_fastHad                         = false;
   c->m_useRDOQTS                       = true;
-  c->m_useSelectiveRDOQ                = false;
+  c->m_useSelectiveRDOQ                = 0;
   c->m_fastQtBtEnc                     = true;
   c->m_maxNumMergeCand                 = 6;
   c->m_reshapeSignalType               = 0;
@@ -2301,6 +2327,8 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
   c->m_RDOQ                            = 1;
   c->m_SignDataHidingEnabled           = 0;
   c->m_useFastLCTU                     = 1;
+  c->m_numRefPics                      = 0;
+  c->m_numRefPicsSCC                   = 0;
 
   // tools
   c->m_Affine                          = 0;
@@ -2391,6 +2419,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       // tools
       c->m_blockImportanceMapping          = 1;
       c->m_RDOQ                            = 2;
+      c->m_useSelectiveRDOQ                = 2;
       c->m_SignDataHidingEnabled           = 1;
       c->m_LMChroma                        = 1;
       c->m_vvencMCTF.MCTF                  = 2;
@@ -2405,6 +2434,8 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
 
     case vvencPresetMode::VVENC_FASTER:
 
+      c->m_FirstPassMode                   = 1;
+      
       // motion estimation
       c->m_SearchRange                     = 128;
       c->m_bipredSearchRange               = 1;
@@ -2416,8 +2447,8 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_CTUSize                         = 64;
       c->m_dualITree                       = 1;
       c->m_MinQT[ 0 ]                      = 4;
-      c->m_MinQT[ 1 ]                      = 8;
-      c->m_MinQT[ 2 ]                      = 4;
+      c->m_MinQT[ 1 ]                      = 4;
+      c->m_MinQT[ 2 ]                      = 2;
       c->m_maxMTTDepth                     = 0;
       c->m_maxMTTDepthI                    = 0;
 
@@ -2449,6 +2480,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_ccalf                           = 1;
       c->m_DMVR                            = 1;
       c->m_RDOQ                            = 2;
+      c->m_useSelectiveRDOQ                = 2;
       c->m_SignDataHidingEnabled           = 1;
       c->m_LMChroma                        = 1;
       c->m_vvencMCTF.MCTF                  = 2;
@@ -2474,8 +2506,8 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_CTUSize                         = 64;
       c->m_dualITree                       = 1;
       c->m_MinQT[ 0 ]                      = 4;
-      c->m_MinQT[ 1 ]                      = 8;
-      c->m_MinQT[ 2 ]                      = 4;
+      c->m_MinQT[ 1 ]                      = 4;
+      c->m_MinQT[ 2 ]                      = 2;
       c->m_maxMTTDepth                     = 0;
       c->m_maxMTTDepthI                    = 1;
 
@@ -2500,7 +2532,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_numRefPicsSCC                   = 0;
 
       // tools
-      c->m_Affine                          = 2;
+      c->m_Affine                          = 5;
       c->m_alf                             = 1;
       c->m_alfSpeed                        = 1;
       c->m_alfUnitSize                     = 128;
@@ -2516,7 +2548,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_LMChroma                        = 1;
       c->m_lumaReshapeEnable               = 2;
       c->m_vvencMCTF.MCTF                  = 2;
-      c->m_vvencMCTF.MCTFSpeed             = 2;
+      c->m_vvencMCTF.MCTFSpeed             = 3;
       c->m_MMVD                            = 3;
       c->m_MRL                             = 1;
       c->m_MTSImplicit                     = 1;
@@ -2542,7 +2574,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_dualITree                       = 1;
       c->m_MinQT[ 0 ]                      = 8;
       c->m_MinQT[ 1 ]                      = 8;
-      c->m_MinQT[ 2 ]                      = 8;
+      c->m_MinQT[ 2 ]                      = 4;
       c->m_maxMTTDepth                     = 221111;
       c->m_maxMTTDepthI                    = 2;
 
@@ -2567,7 +2599,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_numRefPicsSCC                   = 0;
 
       // tools
-      c->m_Affine                          = 2;
+      c->m_Affine                          = 4;
       c->m_alf                             = 1;
       c->m_alfSpeed                        = 0;
       c->m_allowDisFracMMVD                = 1;
@@ -2622,10 +2654,10 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       // speedups
       c->m_qtbttSpeedUp                    = 2;
       c->m_fastTTSplit                     = 5;
-      c->m_contentBasedFastQtbt            = false;
+      c->m_contentBasedFastQtbt            = true;
       c->m_fastHad                         = false;
       c->m_usePbIntraFast                  = 1;
-      c->m_useFastMrg                      = 2;
+      c->m_useFastMrg                      = 3;
       c->m_fastLocalDualTreeMode           = 1;
       c->m_fastSubPel                      = 1;
       c->m_FastIntraTools                  = 0;
@@ -2635,10 +2667,12 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_IntraEstDecBit                  = 1;
       c->m_numIntraModesFullRD             = -1;
       c->m_reduceIntraChromaModesFullRD    = false;
-      c->m_meReduceTap                     = 0;
+      c->m_meReduceTap                     = 2;
+      c->m_numRefPics                      = 2;
+      c->m_numRefPicsSCC                   = 0;
 
       // tools
-      c->m_Affine                          = 2;
+      c->m_Affine                          = 3;
       c->m_alf                             = 1;
       c->m_alfSpeed                        = 0;
       c->m_allowDisFracMMVD                = 1;
@@ -2652,13 +2686,13 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_EDO                             = 2;
       c->m_Geo                             = 1;
       c->m_AMVRspeed                       = 1;
-      c->m_ISP                             = 1;
+      c->m_ISP                             = 3;
       c->m_JointCbCrMode                   = 1;
       c->m_LFNST                           = 1;
       c->m_LMChroma                        = 1;
       c->m_lumaReshapeEnable               = 2;
       c->m_vvencMCTF.MCTF                  = 2;
-      c->m_vvencMCTF.MCTFSpeed             = 1;
+      c->m_vvencMCTF.MCTFSpeed             = 2;
       c->m_MIP                             = 1;
       c->m_useFastMIP                      = 0;
       c->m_MMVD                            = 3;
@@ -2708,7 +2742,9 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_IntraEstDecBit                  = 1;
       c->m_numIntraModesFullRD             = -1;
       c->m_reduceIntraChromaModesFullRD    = false;
-      c->m_meReduceTap                     = 0;
+      c->m_meReduceTap                     = 2;
+      c->m_numRefPics                      = 2;
+      c->m_numRefPicsSCC                   = 0;
 
       // tools
       c->m_Affine                          = 1;
@@ -2731,7 +2767,7 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_LMChroma                        = 1;
       c->m_lumaReshapeEnable               = 2;
       c->m_vvencMCTF.MCTF                  = 2;
-      c->m_vvencMCTF.MCTFSpeed             = 1;
+      c->m_vvencMCTF.MCTFSpeed             = 2;
       c->m_MIP                             = 1;
       c->m_useFastMIP                      = 0;
       c->m_MMVD                            = 1;
@@ -2784,9 +2820,11 @@ VVENC_DECL int vvenc_init_preset( vvenc_config *c, vvencPresetMode preset )
       c->m_numIntraModesFullRD             = -1;
       c->m_reduceIntraChromaModesFullRD    = false;
       c->m_meReduceTap                     = 2;
+      c->m_numRefPics                      = 222221;
+      c->m_numRefPicsSCC                   = 0;
 
       // tools
-      c->m_Affine                          = 2;
+      c->m_Affine                          = 5;
       c->m_alf                             = 1;
       c->m_alfSpeed                        = 0;
       c->m_allowDisFracMMVD                = 1;
@@ -2925,7 +2963,7 @@ VVENC_DECL const char* vvenc_get_config_as_string( vvenc_config *c, vvencMsgLeve
   {
     // verbose output
     css << "CODING TOOL CFG: ";
-    css << "CTU" << c->m_CTUSize << " QT" << vvenc::Log2( c->m_CTUSize / c->m_MinQT[0] ) << vvenc::Log2( c->m_CTUSize / c->m_MinQT[1] ) << "BTT" << c->m_maxMTTDepthI << c->m_maxMTTDepth << " ";
+    css << "CTU" << c->m_CTUSize << " QTMin" << vvenc::Log2( c->m_CTUSize / c->m_MinQT[0] ) << vvenc::Log2( c->m_CTUSize / c->m_MinQT[1] ) << "BTT" << c->m_maxMTTDepthI << c->m_maxMTTDepth << " ";
     css << "IBD:" << ((c->m_internalBitDepth[ 0 ] > c->m_MSBExtendedBitDepth[ 0 ]) || (c->m_internalBitDepth[ 1 ] > c->m_MSBExtendedBitDepth[ 1 ])) << " ";
     css << "SAO:" << (c->m_bUseSAO ? 1 : 0) << " ";
     css << "ALF:" << (c->m_alf ? 1 : 0) << " ";
@@ -3055,9 +3093,10 @@ VVENC_DECL const char* vvenc_get_config_as_string( vvenc_config *c, vvencMsgLeve
       css << "ALFSpeed:" << c->m_alfSpeed << " ";
     }
     if( c->m_quantThresholdVal & 1 )
-      css << "QuantThr: " << (c->m_quantThresholdVal >> 1) << ".5 ";
+      css << "QuantThr:" << (c->m_quantThresholdVal >> 1) << ".5 ";
     else
-      css << "QuantThr: " << (c->m_quantThresholdVal >> 1) << " ";
+      css << "QuantThr:" << (c->m_quantThresholdVal >> 1) << " ";
+    css << "SelectiveRDQO:" << ( int ) c->m_useSelectiveRDOQ << " ";
 
     css << "\nRATE CONTROL CFG: ";
     css << "RateControl:" << ( c->m_RCTargetBitrate > 0 ) << " ";
@@ -3067,7 +3106,6 @@ VVENC_DECL const char* vvenc_get_config_as_string( vvenc_config *c, vvencMsgLeve
       css << "Pass:" << c->m_RCPass << " ";
       css << "TargetBitrate:" << c->m_RCTargetBitrate << " ";
       css << "RCInitialQP:" << c->m_RCInitialQP << " ";
-      css << "RCForceIntraQP:" << c->m_RCForceIntraQP << " ";
     }
     else
     {

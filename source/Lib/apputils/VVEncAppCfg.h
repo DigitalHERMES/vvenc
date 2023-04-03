@@ -528,6 +528,7 @@ int parse( int argc, char* argv[], vvenc_config* c, std::ostream& rcOstr )
   IStreamToFunc<int>                toSaoWithScc                  ( setSAO, this, c, &SaoToIntMap, 0 );
 
   IStreamToInt8                     toSliceTypeAdapt              ( &c->m_sliceTypeAdapt );
+  IStreamToInt8                     toSelectiveRDOQ               ( &c->m_useSelectiveRDOQ );
 
   po::Options opts;
   if( m_easyMode )
@@ -769,7 +770,6 @@ int parse( int argc, char* argv[], vvenc_config* c, std::ostream& rcOstr )
     opts.setSubSection("Rate control, Perceptual Quantization");
     opts.addOptions()
     ("RCInitialQP",                                     c->m_RCInitialQP,                                    "Rate control: initial QP. With two-pass encoding, this specifies the first-pass base QP (instead of using a default QP). Activated if value is greater than zero" )
-    ("RCForceIntraQP",                                  c->m_RCForceIntraQP,                                 "Rate control: force intra QP to be equal to initial QP" )
     ("PerceptQPATempFiltIPic",                          c->m_usePerceptQPATempFiltISlice,                    "Temporal high-pass filter in QPA activity calculation for key pictures (0:off, 1:on, 2:on incl. temporal pumping reduction, -1:auto)")
     ;
 
@@ -872,7 +872,7 @@ int parse( int argc, char* argv[], vvenc_config* c, std::ostream& rcOstr )
     ("FastHAD",                                         c->m_fastHad,                                        "Use fast sub-sampled hadamard for square blocks >=32x32")
     ("RDOQ",                                            c->m_RDOQ,                                           "Rate-Distortion Optimized Quantization mode")
     ("RDOQTS",                                          c->m_useRDOQTS,                                      "Rate-Distortion Optimized Quantization mode for TransformSkip")
-    ("SelectiveRDOQ",                                   c->m_useSelectiveRDOQ,                               "Enable selective RDOQ")
+    ("SelectiveRDOQ",                                   toSelectiveRDOQ,                                     "Enable selective RDOQ (0: never, 1: always, 2: for natural content)")
 
     ("JointCbCr",                                       c->m_JointCbCrMode,                                  "Enable joint coding of chroma residuals (0:off, 1:on)")
     ("CabacInitPresent",                                c->m_cabacInitPresent,                               "Enable cabac table index selection based on previous frame")
@@ -1047,7 +1047,7 @@ int parse( int argc, char* argv[], vvenc_config* c, std::ostream& rcOstr )
     ("MmvdDisNum",                                      c->m_MmvdDisNum,                                     "Number of MMVD Distance Entries")
     ("AllowDisFracMMVD",                                c->m_allowDisFracMMVD,                               "Disable fractional MVD in MMVD mode adaptively")
     ("MCTF",                                            c->m_vvencMCTF.MCTF,                                 "Enable GOP based temporal filter. (0:off, 1:filter all frames, 2:use SCC detection to disable for screen coded content)")
-    ("MCTFSpeed",                                       c->m_vvencMCTF.MCTFSpeed,                            "MCTF Fast Mode (0:best quality ... 3:fastest operation)")
+    ("MCTFSpeed",                                       c->m_vvencMCTF.MCTFSpeed,                            "MCTF Fast Mode (0:best quality ... 4:fastest operation)")
     ("MCTFUnitSize",                                    c->m_vvencMCTF.MCTFUnitSize,                         "Size of MCTF operation area (block size for motion compensation).")
     ("MCTFFutureReference",                             c->m_vvencMCTF.MCTFFutureReference,                  "Enable referencing of future frames in the GOP based temporal filter. This is typically disabled for Low Delay configurations.")
     ("MCTFFrame",                                       toMCTFFrames,                                        "Frame to filter Strength for frame in GOP based temporal filter")
@@ -1089,6 +1089,7 @@ int parse( int argc, char* argv[], vvenc_config* c, std::ostream& rcOstr )
     ("FastInferMerge",                                  c->m_FIMMode,                                        "Fast method to skip Inter/Intra modes. 0: off, [1..4] speedups")
     ("NumIntraModesFullRD",                             c->m_numIntraModesFullRD,                            "Number modes for full RD intra search [-1, 1..3] (default: -1 auto)")
     ("ReduceIntraChromaModesFullRD",                    c->m_reduceIntraChromaModesFullRD,                   "Reduce modes for chroma full RD intra search")
+    ("FirstPassMode",                                   c->m_FirstPassMode,                                  "FirstPassMode (0: default, 1: faster")
     ;
 
     opts.setSubSection("Input Options");
@@ -1281,7 +1282,7 @@ bool checkCfg( vvenc_config* c, std::ostream& rcOstr )
     // if rc statsfile is defined and in 1st pass, bitstream file is not needed
     if ( !(c->m_RCPass == 1 && !m_RCStatsFileName.empty()) )
     {
-      rcOstr << "error: bitstream file name must be specified (--output=bit.266)" << std::endl;
+      rcOstr << "error: bitstream file name must be specified (" << (m_easyMode ? "--output" : "--BitstreamFile") << "=bit.266)" << std::endl;
       ret = true;
     }
   }
