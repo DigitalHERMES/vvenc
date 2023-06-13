@@ -151,7 +151,6 @@ endif()
 
 # set the folder where to place the projects
 set_target_properties( ${LIB_NAME} PROPERTIES
- VERSION 0.0.0
- SOVERSION 0
- FOLDER lib
-)
+                                   VERSION ${PROJECT_VERSION}
+                                   SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+                                   FOLDER lib )
