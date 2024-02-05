@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -100,6 +100,18 @@ static inline int64_t _mm_cvtsi128_si64( __m128i a )
 {
   int64_t x;
   _mm_storel_epi64( ( __m128i* ) &x, a );
+  return x;
+}
+#endif
+
+#ifdef MISSING_INTRIN_mm_cvtsi64_si128
+#if INTPTR_MAX == INT64_MAX
+#error _mm_cvtsi64_si128 has to be defined for 64-bit systems!
+#endif
+static inline __m128i _mm_cvtsi64_si128( int64_t a )
+{
+  __m128i x;
+  x = _mm_loadu_si64( &a );
   return x;
 }
 #endif

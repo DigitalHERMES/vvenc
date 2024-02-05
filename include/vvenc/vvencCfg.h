@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -80,7 +80,7 @@ typedef void (*vvencLoggingCallback)(void*, int, const char*, va_list);
 #define VVENC_MAX_TLAYER                      7      // Explicit temporal layer QP offset - max number of temporal layer
 #define VVENC_MAX_NUM_CQP_MAPPING_TABLES      3      // Maximum number of chroma QP mapping tables (Cb, Cr and joint Cb-Cr)
 #define VVENC_MAX_NUM_ALF_ALTERNATIVES_CHROMA 8
-#define VVENC_MCTF_RANGE                      4      // max number of frames used for MCTF filtering in forward / backward direction
+#define VVENC_MCTF_RANGE                      6      // max number of frames used for MCTF filtering in forward / backward direction
 #define VVENC_MAX_NUM_COMP                    3      // max number of components
 #define VVENC_MAX_QP_VALS_CHROMA              8      // max number qp vals in array
 #define VVENC_MAX_MCTF_FRAMES                 16
@@ -114,6 +114,7 @@ typedef enum
  VVENC_MEDIUM    = 2,
  VVENC_SLOW      = 3,
  VVENC_SLOWER    = 4,
+ VVENC_MEDIUM_LOWDECNRG = 130,       // medium based low decoding energy
  VVENC_FIRSTPASS = 254,
  VVENC_TOOLTEST  = 255,
 }vvencPresetMode;
@@ -195,7 +196,7 @@ typedef enum
   VVENC_DRT_CRA                = 1,
   VVENC_DRT_IDR                = 2,
   VVENC_DRT_RECOVERY_POINT_SEI = 3,
-  VVENC_DRT_IDR2               = 4,
+  VVENC_DRT_IDR2               = 4,             //deprecated
   VVENC_DRT_CRA_CRE            = 5,             //constrained RASL encoding
 }vvencDecodingRefreshType;
 
@@ -356,20 +357,19 @@ typedef struct vvencRPLEntry
 
 VVENC_DECL void vvenc_RPLEntry_default(vvencRPLEntry *RPLEntry );
 
-/// <summary>
-/// Deprecated, dont use!
-/// </summary>
-typedef struct vvencWCGChromaQPControl
+// begin: unused, will be removed in future versions
+typedef struct vvencUnusedStruct0
 {
-  bool   enabled        ;    // Enabled flag (0:default)
-  double chromaCbQpScale;    // Chroma Cb QP Scale (1.0:default)
-  double chromaCrQpScale;    // Chroma Cr QP Scale (1.0:default)
-  double chromaQpScale  ;    // Chroma QP Scale (0.0:default)
-  double chromaQpOffset ;    // Chroma QP Offset (0.0:default)
-}vvencWCGChromaQPControl;
+  bool   m_cfgUnused0; // TODO: remove unused memory from configuration
+  double m_cfgUnused1; // TODO: remove unused memory from configuration
+  double m_cfgUnused2; // TODO: remove unused memory from configuration
+  double m_cfgUnused3; // TODO: remove unused memory from configuration
+  double m_cfgUnused4; // TODO: remove unused memory from configuration
+}vvencUnusedStruct0;
 
+typedef vvencUnusedStruct0 vvencWCGChromaQPControl;
 VVENC_DECL void vvenc_WCGChromaQPControl_default(vvencWCGChromaQPControl *WCGChromaQPControl );
-
+// end: unused
 
 typedef struct vvencChromaQpMappingTableParams
 {
@@ -407,7 +407,7 @@ typedef struct vvencMCTF
   int                 MCTFSpeed;
   bool                MCTFFutureReference;
   int                 MCTFUnitSize;
-  int                 mctfUnused2;                                                       // TODO: remove unused memory from configuration
+  int                 mctfUnused;                                                        // TODO: remove unused memory from configuration
 
   int                 numFrames;
   int                 MCTFFrames[VVENC_MAX_MCTF_FRAMES];
@@ -433,7 +433,7 @@ typedef struct vvenc_config
   int                 m_numThreads;                                                      // number of worker threads ( if <0: <720p 4threads, else 8threads (limited to available cores))
 
   int                 m_QP;                                                              // QP value of key-picture (0-63, default: 32)
-  int                 m_RCTargetBitrate;                                                 // target bitrate in bps, (default. 0 (rc disabled))
+  int                 m_RCTargetBitrate;                                                 // target bitrate in bps (default: 0 (RC disabled))
 
   vvencMsgLevel       m_verbosity;                                                       // encoder verbosity level
 
@@ -499,8 +499,8 @@ typedef struct vvenc_config
   int                 m_cfgUnused4[ 7 ];                                                 // TODO: remove unused memory from configuration
   int                 m_cfgUnused5[ 7 ];
   int                 m_cfgUnused6;
-  int                 m_cfgUnused7;
-  int                 m_cfgUnused8;
+  int                 m_maxPicWidth;
+  int                 m_maxPicHeight;
 
   bool                m_useSameChromaQPTables;
   vvencChromaQpMappingTableParams m_chromaQpMappingTableParams;
@@ -529,7 +529,7 @@ typedef struct vvenc_config
   int                 m_usePerceptQPATempFiltISlice;                                     // Flag indicating if temporal high-pass filtering in visual activity calculation in QPA should (true) or shouldn't (false) be applied for I-slices
 
   bool                m_lumaLevelToDeltaQPEnabled;
-  vvencWCGChromaQPControl  m_wcgChromaQpControl;
+  vvencUnusedStruct0  m_cfgUnused24;
 
   vvencChromaFormat   m_internChromaFormat;
   bool                m_useIdentityTableForNon420Chroma;
@@ -702,7 +702,7 @@ typedef struct vvenc_config
   bool                m_useNonLinearAlfChroma;
   unsigned            m_maxNumAlfAlternativesChroma;
   bool                m_ccalf;
-  int                 m_ccalfQpThreshold;
+  int                 m_cfgUnused25;
   int                 m_alfTempPred;                                                     // Indicates using of temporal filter data prediction through APS
   int                 m_alfSpeed;
 
@@ -759,7 +759,8 @@ typedef struct vvenc_config
   int                 m_explicitAPSid;
 
   bool                m_picReordering;
-  bool                m_reservedFlag[2];
+  bool                m_reservedFlag;
+  bool                m_poc0idr;
   int8_t              m_fppLinesSynchro;
   bool                m_blockImportanceMapping;
   bool                m_saoScc;
@@ -768,7 +769,13 @@ typedef struct vvenc_config
   int8_t              m_sliceTypeAdapt;                                                  // enable slice type adaptation (STA)
   bool                m_treatAsSubPic;
 
-  double              m_reservedDouble[10];
+#define VVENC_SET_MAXRATE_FACTOR(f) (-((int)(f*16+0.5)))
+  int                 m_RCMaxBitrate;                                                    // maximum bitrate in bps (default: 0 (RC disabled or least constrained VBR),
+                                                                                         // if negative, the absolute value is interpreted as a 4-bit fixed point multiplier of the target bitrate).
+                                                                                         // -24, i.e. -1.1000 binary, means the maxrate would be set to be the 1.5x of the target bitrate.
+                                                                                         // for convenience use VVENC_SET_MAXRATE_FACTOR, e.g. VVENC_SET_MAXRATE_FACTOR(1.5), to set the multiplier
+  int                 m_forceScc;
+  double              m_reservedDouble[9];
 
   // internal state variables
   bool                m_configDone;                                                      // state variable, Private context used for internal data ( do not change )
@@ -847,7 +854,7 @@ VVENC_DECL bool vvenc_init_config_parameter( vvenc_config *cfg );
 #define VVENC_OPT_TICKSPERSEC          "tickspersec"          // m_TicksPerSecond
 #define VVENC_OPT_INPUTBITDEPTH        "inputbitdepth"        // m_inputBitDepth
 #define VVENC_OPT_FRAMES               "framestobeencoded"    // m_framesToBeEncoded
-#define VVENC_OPT_PRESET               "preset"               // set preset like "faster,fast,medium,slow,slower
+#define VVENC_OPT_PRESET               "preset"               // set preset like "faster,fast,medium,slow,slower,medium_lowDecEnergy
 #define VVENC_OPT_THREADS              "threads"              // m_numThreads
 #define VVENC_OPT_BITRATE              "bitrate"              // m_RCTargetBitrate
 #define VVENC_OPT_QP                   "qp"                   // m_QP

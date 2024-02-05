@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -436,6 +436,11 @@ VVENC_DECL const char* vvenc_get_compile_info_string()
   VVencCompileInfo.clear();
   VVencCompileInfo = vvenc::VVEncImpl::getCompileInfoString();
   return VVencCompileInfo.c_str();
+}
+
+VVENC_DECL int vvenc_decode_bitstream( const char* FileName, const char* trcFile, const char* trcRule)
+{
+  return vvenc::VVEncImpl::decodeBitstream( FileName, trcFile, trcRule );
 }
 
 VVENC_DECL int vvenc_get_width_of_component( const vvencChromaFormat chFmt, const int frameWidth, const int compId )

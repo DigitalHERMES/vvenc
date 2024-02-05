@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -215,6 +215,7 @@ public:
   bool                          isNeededForOutput;
   bool                          isFinished;
   bool                          isLongTerm;
+  bool                          isFlush;
   bool                          precedingDRAP; // preceding a DRAP picture in decoding order
 
   const GOPEntry*               gopEntry;
@@ -237,6 +238,7 @@ public:
 
   std::vector<double>           ctuQpaLambda;
   std::vector<int>              ctuAdaptedQP;
+  int                           gopAdaptedQP; // QP offset of GOP (delta relative to base QP)
   bool                          isMeanQPLimited;
   std::mutex                    wppMutex;
   int                           picInitialQP;
@@ -244,24 +246,24 @@ public:
   int16_t                       picMemorySTA;
   uint16_t                      picVisActTL0;
   uint16_t                      picVisActY;
+  uint16_t                      picSpVisAct;
   double                        psnr[MAX_NUM_COMP];
   double                        mse [MAX_NUM_COMP];
 
   StopClock                     encTime;
   bool                          isSccWeak;
   bool                          isSccStrong;
-  bool                          useScME;
-  bool                          useScMCTF;
-  bool                          useScTS;
-  bool                          useScBDPCM;
-  bool                          useScIBC;
-  bool                          useScLMCS;
-  bool                          useScSAO;
-  bool                          useScNumRefs;
-  bool                          useScSelectiveRdoq;
-  int                           useScFastMrg;
+  bool                          useME;
+  bool                          useMCTF;
+  bool                          useTS;
+  bool                          useBDPCM;
+  bool                          useIBC;
+  bool                          useLMCS;
+  bool                          useSAO;
+  bool                          useNumRefs;
+  bool                          useSelectiveRdoq;
+  int                           useFastMrg;
   int                           useQtbttSpeedUpMode;
-  int                           seqBaseQp;
   int                           actualHeadBits;
   int                           actualTotalBits;
   EncRCPic*                     encRCPic;

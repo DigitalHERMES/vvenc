@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -55,13 +55,14 @@ namespace vvenc {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void GOPCfg::initGopList( int refreshType, int intraPeriod, int gopSize, int leadFrames, bool bPicReordering, const vvencGOPEntry cfgGopList[ VVENC_MAX_GOP ], const vvencMCTF& mctfCfg, int firstPassMode )
+void GOPCfg::initGopList( int refreshType, bool poc0idr, int intraPeriod, int gopSize, int leadFrames, bool bPicReordering, const vvencGOPEntry cfgGopList[ VVENC_MAX_GOP ], const vvencMCTF& mctfCfg, int firstPassMode )
 {
   CHECK( gopSize < 1, "gop size has to be greater than 0" );
 
   m_mctfCfg            = &mctfCfg;
   m_refreshType        = refreshType;
   m_picReordering      = bPicReordering;
+  m_poc0idr            = poc0idr;
   m_fixIntraPeriod     = intraPeriod;
   m_firstPassMode      = firstPassMode;
   m_maxGopSize         = gopSize;
@@ -83,7 +84,7 @@ void GOPCfg::initGopList( int refreshType, int intraPeriod, int gopSize, int lea
     prevGopList = &m_defaultGopLists[ i ];
     pocOffset += m_defGopSize;
   }
-  if( remainSize && remainSize != m_defGopSize )
+  if( remainSize )
   {
     const int prevGopIdx = Clip3<int>( 0, (int)m_defaultGopLists.size() - 1, numGops - 1 );
     prevGopList = &m_defaultGopLists[ prevGopIdx ];
@@ -107,18 +108,17 @@ void GOPCfg::initGopList( int refreshType, int intraPeriod, int gopSize, int lea
   CHECK( leadFrames < 0, "negative number of lead frames not supported" );
 
   // start with first gop list
-  m_gopList     = &m_defaultGopLists[ 0 ];
-  m_nextListIdx = std::min( 1, (int)m_defaultGopLists.size() - 1 );
-  xCreatePocToGopIdx( *m_gopList, m_refreshType == VVENC_DRT_IDR2, m_pocToGopIdx );
+  m_gopList     = remainSize != 0 && !poc0idr ? &m_remainGopList : &m_defaultGopLists[ 0 ];
+  m_nextListIdx = remainSize != 0 && !poc0idr ? 0 : std::min( 1, (int)m_defaultGopLists.size() - 1 );
+  xCreatePocToGopIdx( *m_gopList, !m_poc0idr, m_pocToGopIdx );
 
   // lets start with poc 0
   m_gopNum       = 0;
   m_nextPoc      = -leadFrames;
   m_pocOffset    = 0;
   m_cnOffset     = 0;
-  CHECK( m_refreshType == VVENC_DRT_IDR2 && ( m_fixIntraPeriod == 1 || ! m_picReordering ), "refresh type idr2 only for random access possible" );
-  m_numTillGop   = m_refreshType == VVENC_DRT_IDR2 ? (int)m_gopList->size() - 1 : 0;
-  m_numTillIntra = m_refreshType == VVENC_DRT_IDR2 ? (int)m_gopList->size() - 1 : 0;
+  m_numTillGop   = poc0idr ? 0 : (int)m_gopList->size() - 1;
+  m_numTillIntra = poc0idr ? 0 : (int)m_gopList->size() - 1;
 }
 
 void GOPCfg::getNextGopEntry( GOPEntry& gopEntry )
@@ -126,8 +126,8 @@ void GOPCfg::getNextGopEntry( GOPEntry& gopEntry )
   // check for lead frames
   if( m_nextPoc < 0 )
   {
-    const int idr2Adj         = m_refreshType == VVENC_DRT_IDR2 ? 1 : 0;
-    const bool isStartOfIntra = m_fixIntraPeriod > 0 ? ( ( m_nextPoc + idr2Adj ) % m_fixIntraPeriod == 0 ) : false; ;
+    const int pocAdj          = m_poc0idr ? 0 : 1;
+    const bool isStartOfIntra = m_fixIntraPeriod > 0 ? ( ( m_nextPoc + pocAdj ) % m_fixIntraPeriod == 0 ) : false; ;
 
     // try to estimate temporal layer 0 leading frames
     bool isTl0 = false;
@@ -143,11 +143,11 @@ void GOPCfg::getNextGopEntry( GOPEntry& gopEntry )
       {
         const int ipOffset  = -m_fixIntraPeriod * ( ( m_nextPoc - ( m_fixIntraPeriod - 1 ) ) / m_fixIntraPeriod );
         const int pocInIp   = m_nextPoc + ipOffset;
-        isTl0 = ( pocInIp + idr2Adj ) % m_defGopSize == 0;
+        isTl0 = ( pocInIp + pocAdj ) % m_defGopSize == 0;
       }
       else
       {
-        isTl0 = ( ( m_nextPoc + idr2Adj ) % m_defGopSize ) == 0;
+        isTl0 = ( ( m_nextPoc + pocAdj ) % m_defGopSize ) == 0;
       }
     }
 
@@ -166,7 +166,7 @@ void GOPCfg::getNextGopEntry( GOPEntry& gopEntry )
 
   const int  pocInGop   = m_nextPoc - m_pocOffset;
   const int  gopId      = m_pocToGopIdx[ pocInGop % (int)m_pocToGopIdx.size() ];
-  const bool isLeading0 = m_refreshType != VVENC_DRT_IDR2 && m_nextPoc == 0 ? true : false; // for non IDR2, we have a leading poc 0
+  const bool isLeading0 = m_poc0idr && m_nextPoc == 0 ? true : false; // for poc0idr, we have a leading poc 0
 
   gopEntry             = (*m_gopList)[ gopId ];
   gopEntry.m_POC       = m_nextPoc;
@@ -179,6 +179,7 @@ void GOPCfg::getNextGopEntry( GOPEntry& gopEntry )
   {
     gopEntry.m_sliceType      = 'I';
     gopEntry.m_isStartOfIntra = true;
+    gopEntry.m_temporalId     = 0;
   }
 
   // check for end of current gop
@@ -207,7 +208,7 @@ void GOPCfg::getNextGopEntry( GOPEntry& gopEntry )
         m_gopList = &m_remainGopList;
       }
     }
-    xCreatePocToGopIdx( *m_gopList, m_refreshType == VVENC_DRT_IDR2, m_pocToGopIdx );
+    xCreatePocToGopIdx( *m_gopList, !m_poc0idr, m_pocToGopIdx );
     m_numTillGop  = (int)m_gopList->size();
     m_cnOffset   += isLeading0 ? 1 : prevGopSize;
     if( ! isLeading0 )
@@ -232,6 +233,7 @@ void GOPCfg::startIntraPeriod( GOPEntry& gopEntry )
   gopEntry.m_sliceType      = 'I';
   gopEntry.m_isStartOfIntra = true;
   gopEntry.m_isStartOfGop   = true;
+  gopEntry.m_temporalId     = 0;
 
   // start with first gop list
   m_gopList      = &m_defaultGopLists[ 0 ];
@@ -239,7 +241,7 @@ void GOPCfg::startIntraPeriod( GOPEntry& gopEntry )
   m_numTillIntra = m_fixIntraPeriod;
   m_numTillGop   = (int)m_gopList->size();
 
-  xCreatePocToGopIdx( *m_gopList, m_refreshType == VVENC_DRT_IDR2, m_pocToGopIdx );
+  xCreatePocToGopIdx( *m_gopList, !m_poc0idr, m_pocToGopIdx );
 
   // process current / first I picture
   m_numTillGop  -= 1;
@@ -561,7 +563,7 @@ void GOPCfg::xCreateGopList( int maxGopSize, int gopSize, int pocOffset, const v
   xSetSTSA     ( gopList, pocToGopIdx );
   xSetBckwdOnly( gopList );
   xSetMctfIndex( maxGopSize, gopList );
-  if( m_firstPassMode == 2 )
+  if( m_firstPassMode == 2 || m_firstPassMode == 4 )
   {
     xSetSkipFirstPass( gopList );
   }

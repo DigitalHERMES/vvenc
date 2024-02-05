@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -1863,7 +1863,7 @@ void HLSWriter::codeSliceHeader( const Slice* slice )
     }
 
     //Write L1 related syntax elements
-      if (!slice->pps->rpl1IdxPresent && slice->pps->rpl1IdxPresent)
+      if (slice->sps->getNumRPL(1) > 1 && slice->pps->rpl1IdxPresent)
       {
         WRITE_FLAG(slice->rplIdx[1] != -1 ? 1 : 0, "ref_pic_list_sps_flag[1]");
       }

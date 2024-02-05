@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -338,7 +338,7 @@ int VVEncImpl::encode( vvencYUVBuffer* pcYUVBuffer, vvencAccessUnit* pcAccessUni
       }
     }
 
-    if ( ! xVerifyYUVBuffer( pcYUVBuffer ) )
+    if ( ! xConvertVerifyYUVBuffer( pcYUVBuffer ) )
     {     
       m_cErrorString = "InputPicture: Source image contains values outside the specified bit range";
       return VVENC_ERR_UNSPECIFIED;
@@ -557,9 +557,16 @@ int VVEncImpl::printSummary() const
   return 0;
 }
 
-bool VVEncImpl::xVerifyYUVBuffer( vvencYUVBuffer* pcYUVBuffer )
+bool VVEncImpl::xConvertVerifyYUVBuffer( vvencYUVBuffer* pcYUVBuffer )
 {
   if( pcYUVBuffer == nullptr ){ return false; }
+
+  bool conv8bit = false;
+  if ( m_cVVEncCfg.m_inputBitDepth[0] == 10 && m_cVVEncCfg.m_internalBitDepth[0] == 8 &&
+       m_cVVEncCfg.m_inputBitDepth[0] == m_cVVEncCfg.m_MSBExtendedBitDepth[0] )
+  {
+    conv8bit = true;
+  }
 
   const int numComp  = (m_cVVEncCfg.m_internChromaFormat==VVENC_CHROMA_400) ? 1 : 3;
   const int16_t mask = ~( ( 1 << m_cVVEncCfg.m_internalBitDepth[0] ) - 1 );
@@ -568,11 +575,26 @@ bool VVEncImpl::xVerifyYUVBuffer( vvencYUVBuffer* pcYUVBuffer )
   {
     vvencYUVPlane& plane = pcYUVBuffer->planes[ comp ];
     int16_t* dst     = plane.ptr;
-    for( int y = 0; y < plane.height; y++, dst += plane.stride )
+
+    if ( conv8bit )
     {
-      for( int x = 0; x < plane.width; x++ )
+      for( int y = 0; y < plane.height; y++, dst += plane.stride )
       {
-        dstSum |= dst[ x ] & mask;
+        for( int x = 0; x < plane.width; x++ )
+        {
+          dst[ x ] = (Pel)std::min<Pel>( 255, ( dst[x] + 2 ) >> 2 );
+          dstSum |= dst[ x ] & mask;
+        }
+      }
+    }
+    else
+    {
+      for( int y = 0; y < plane.height; y++, dst += plane.stride )
+      {
+        for( int x = 0; x < plane.width; x++ )
+        {
+          dstSum |= dst[ x ] & mask;
+        }
       }
     }
   }
@@ -781,23 +803,28 @@ const char* VVEncImpl::setSIMDExtension( const char* simdId )
       THROW( "requested SIMD level (" << simdReqStr << ") not supported by current CPU (max " << read_x86_extension_name() << ")." );
     }
 
-#  if ENABLE_SIMD_OPT_BUFFER
+#if ENABLE_SIMD_OPT_BUFFER
+  #if defined( TARGET_SIMD_X86 )
     g_pelBufOP.initPelBufOpsX86();
-#  endif
-#  if ENABLE_SIMD_TRAFO
-    g_tCoeffOps.initTCoeffOpsX86();
-#  endif
+  #endif
+  #if defined( TARGET_SIMD_ARM )
+    g_pelBufOP.initPelBufOpsARM();
+  #endif
+#endif
+#if ENABLE_SIMD_TRAFO
+  g_tCoeffOps.initTCoeffOpsX86();
+#endif
 
     return read_x86_extension_name().c_str();
   }
-#  if HANDLE_EXCEPTION
+#if HANDLE_EXCEPTION
   catch( Exception& e )
   {
     MsgLog msg;
     msg.log( VVENC_ERROR, "\n%s\n", e.what() );
     return nullptr;
   }
-#  endif   // HANDLE_EXCEPTION
+#endif   // HANDLE_EXCEPTION
 #else      // !TARGET_SIMD_X86
   if( !simdReqStr.empty() && simdReqStr != "SCALAR" )
   {
@@ -832,11 +859,19 @@ std::string VVEncImpl::createEncoderInfoStr()
 
 
   std::string cInfoStr;
-  cInfoStr  = "Fraunhofer VVC Encoder ver. " VVENC_VERSION;
+  cInfoStr  = "VVenC, the Fraunhofer H.266/VVC Encoder, version " VVENC_VERSION;
   cInfoStr += " ";
   cInfoStr += cssCap.str();
 
   return cInfoStr;
+}
+
+///< decode bitstream is deprecated and will be removed
+int VVEncImpl::decodeBitstream( const char* FileName, const char* trcFile, const char* trcRule)
+{
+  MsgLog msg;
+  msg.log( VVENC_ERROR, "vvenc_decode_bitstream is deprecated and not working anymore." );
+  return VVENC_ERR_NOT_SUPPORTED;
 }
 
 

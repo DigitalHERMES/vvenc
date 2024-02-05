@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -131,10 +131,11 @@ void EncLib::initEncoderLib( const vvenc_config& encCfg )
 #endif
 
 #if ENABLE_TIME_PROFILING
-  if( g_timeProfiler == nullptr )
+  if( g_timeProfiler )
   {
-    g_timeProfiler = timeProfilerCreate( encCfg );
+    delete g_timeProfiler;
   }
+  g_timeProfiler = timeProfilerCreate( encCfg );
 #endif
 }
 
@@ -166,12 +167,17 @@ void EncLib::uninitEncoderLib()
 
 #if ENABLE_TIME_PROFILING
 #if ENABLE_TIME_PROFILING_MT_MODE
-  for( auto& p : m_threadPool->getProfilers() )
+  if( m_threadPool )
   {
-    *g_timeProfiler += *p;
+    for(auto& p : m_threadPool->getProfilers())
+    {
+      *g_timeProfiler += *p;
+    }
   }
 #endif
   timeProfilerResults( g_timeProfiler );
+  delete g_timeProfiler;
+  g_timeProfiler = nullptr;
 #endif
   xUninitLib();
 }
@@ -344,9 +350,14 @@ void EncLib::xInitRCCfg()
   vvenc_init_preset( &m_firstPassCfg, vvencPresetMode::VVENC_FIRSTPASS );
 
   // fixed-QP encoding in first rate control pass
-  const double d = (3840.0 * 2160.0) / double (m_encCfg.m_SourceWidth * m_encCfg.m_SourceHeight);
   m_firstPassCfg.m_RCTargetBitrate = 0;
-  m_firstPassCfg.m_QP /*base QP*/  = (m_encCfg.m_RCInitialQP > 0 ? Clip3 (17, MAX_QP, m_encCfg.m_RCInitialQP) : std::max (17, MAX_QP_PERCEPT_QPA - 2 - int (0.5 + sqrt ((d * m_encCfg.m_RCTargetBitrate) / 500000.0))));
+  if( m_firstPassCfg.m_FirstPassMode > 2 )
+  {
+    m_firstPassCfg.m_SourceWidth  = ( m_encCfg.m_SourceWidth  >> 1 ) & ( ~7 );
+    m_firstPassCfg.m_SourceHeight = ( m_encCfg.m_SourceHeight >> 1 ) & ( ~7 );
+    m_firstPassCfg.m_PadSourceWidth  = m_firstPassCfg.m_SourceWidth;
+    m_firstPassCfg.m_PadSourceHeight = m_firstPassCfg.m_SourceHeight;
+  }
 
   // preserve some settings
   m_firstPassCfg.m_intraQPOffset   = m_encCfg.m_intraQPOffset;
@@ -359,14 +370,14 @@ void EncLib::xInitRCCfg()
   m_firstPassCfg.m_bimCtuSize      = m_encCfg.m_CTUSize;
   m_firstPassCfg.m_log2MinCodingBlockSize = m_encCfg.m_log2MinCodingBlockSize;
 
-  if( m_firstPassCfg.m_FirstPassMode >= 1 )
+  // set Inter block size
+  if( m_firstPassCfg.m_FirstPassMode > 0 )
   {
-    unsigned interBlockSize = m_firstPassCfg.m_SourceWidth >= 1280 && m_firstPassCfg.m_SourceHeight >= 720 ? 64 : 32;
-    m_firstPassCfg.m_MinQT[ 1 ] = m_firstPassCfg.m_MaxQT[ 1 ]  = interBlockSize;
+    m_firstPassCfg.m_MinQT[ 1 ] = m_firstPassCfg.m_MaxQT[ 1 ] = ( std::min( m_firstPassCfg.m_SourceWidth, m_firstPassCfg.m_SourceHeight ) < 720 ? 32 : 64 );
   }
 
   // clear MaxCuDQPSubdiv
-  if( m_firstPassCfg.m_CTUSize < 128 && ( m_firstPassCfg.m_PadSourceWidth > 1024 || m_firstPassCfg.m_PadSourceHeight > 640 ) )
+  if( m_firstPassCfg.m_CTUSize < 128 && std::min( m_firstPassCfg.m_SourceWidth, m_firstPassCfg.m_SourceHeight ) >= 720 )
   {
     m_firstPassCfg.m_cuQpDeltaSubdiv = 0;
   }
@@ -412,13 +423,13 @@ void EncLib::encodePicture( bool flush, const vvencYUVBuffer* yuvInBuf, AccessUn
       if( picShared )
       {
         picShared->reuse( m_picsRcvd, yuvInBuf );
-        m_encStages[ 0 ]->addPicSorted( picShared );
+        m_encStages[ 0 ]->addPicSorted( picShared, flush );
         m_picsRcvd  += 1;
         inputPending = false;
       }
     }
 
-    PROFILER_EXT_UPDATE( g_timeProfiler, P_TOP_LEVEL, pic->TLayer );
+    PROFILER_EXT_UPDATE( g_timeProfiler, P_TOP_LEVEL, 0 );
 
     // trigger stages
     isQueueEmpty = m_picsRcvd > 0 || ( m_picsRcvd <= 0 && flush );

@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -147,7 +147,7 @@ namespace vvenc {
 
 
 #if defined( TARGET_SIMD_X86 ) && !defined( REAL_TARGET_X86 )
-#  define SIMD_EVERYWHERE_EXTENSION_LEVEL                 SSE42
+#  define SIMD_EVERYWHERE_EXTENSION_LEVEL                 AVX2
 #endif
 
 // End of SIMD optimizations
@@ -753,7 +753,7 @@ public:
   template<class InputIt>
   iterator        insert( const_iterator _pos, InputIt first, InputIt last )
                                                 { const difference_type numEl = last - first;
-                                                  CHECKD( _size + numEl >= N, "capacity exceeded" );
+                                                  CHECKD( _size + numEl > N, "capacity exceeded" );
                                                   for( difference_type i = _size - 1; i >= _pos - _arr; i-- ) _arr[i + numEl] = _arr[i];
                                                   iterator it = _arr + ( _pos - _arr ); _size += numEl; iterator ret = it;
                                                   while( first != last ) *it++ = *first++;
@@ -761,7 +761,7 @@ public:
 
   iterator        insert( const_iterator _pos, size_t numEl, const T& val )
                                                 { //const difference_type numEl = last - first;
-                                                  CHECKD( _size + numEl >= N, "capacity exceeded" );
+                                                  CHECKD( _size + numEl > N, "capacity exceeded" );
                                                   for( difference_type i = _size - 1; i >= _pos - _arr; i-- ) _arr[i + numEl] = _arr[i];
                                                   iterator it = _arr + ( _pos - _arr ); _size += numEl; iterator ret = it;
                                                   for ( int k = 0; k < numEl; k++) *it++ = val;
@@ -832,20 +832,6 @@ public:
     }
 
     return ret;
-  }
-
-  void defragment()
-  {
-    m_cache.clear();
-  
-    for( T* chunk : m_cacheChunks )
-    {
-      for( ptrdiff_t p = 0; p < DYN_CACHE_CHUNK_SIZE; p++ )
-      {
-        //m_cache.push_back( &chunk[DYN_CACHE_CHUNK_SIZE - p - 1] );
-        m_cache.push_back( &chunk[p] );
-      }
-    }
   }
 
   void cache( T* el )

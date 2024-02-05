@@ -6,7 +6,7 @@ the Software are granted under this license.
 
 The Clear BSD License
 
-Copyright (c) 2019-2023, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
+Copyright (c) 2019-2024, Fraunhofer-Gesellschaft zur Förderung der angewandten Forschung e.V. & The VVenC Authors.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -150,6 +150,7 @@ private:
   std::deque<PicApsGlobal*> m_globalApsList;
 
   std::vector<int>          m_globalCtuQpVector;
+  bool                      m_forceSCC;
 
 public:
   EncGOP( MsgLog& msglog );
@@ -165,15 +166,15 @@ public:
 
 protected:
   virtual void initPicture    ( Picture* pic );
-  virtual void processPictures( const PicList& picList, bool flush, AccessUnitList& auList, PicList& doneList, PicList& freeList );
+  virtual void processPictures( const PicList& picList, AccessUnitList& auList, PicList& doneList, PicList& freeList );
   virtual void waitForFreeEncoders();
 
 private:
   void xUpdateRasInit                 ( Slice* slice );
-  void xProcessPictures               ( bool flush, AccessUnitList& auList, PicList& doneList );
+  void xProcessPictures               ( AccessUnitList& auList, PicList& doneList );
   void xEncodePicture                 ( Picture* pic, EncPicture* picEncoder );
   void xOutputRecYuv                  ( const PicList& picList );
-  void xReleasePictures               ( const PicList& picList, PicList& freeList, bool allDone );
+  void xReleasePictures               ( const PicList& picList, PicList& freeList );
 
   void xInitVPS                       ( VPS &vps ) const;
   void xInitDCI                       ( DCI &dci, const SPS &sps, const int dciId ) const;
@@ -188,8 +189,9 @@ private:
   bool xIsSliceTemporalSwitchingPoint ( const Slice* slice, const PicList& picList ) const;
 
   void xSetupPicAps                   ( Picture* pic );
-  void xInitPicsInCodingOrder         ( const PicList& picList, bool flush );
+  void xInitPicsInCodingOrder         ( const PicList& picList );
   void xGetProcessingLists            ( std::list<Picture*>& procList, std::list<Picture*>& rcUpdateList, const bool lockStepMode );
+  void xInitGopQpCascade              ( Picture& keyPic, const PicList& picList );
   void xInitFirstSlice                ( Picture& pic, const PicList& picList, bool isEncodeLtRef );
   void xInitSliceTMVPFlag             ( PicHeader* picHeader, const Slice* slice );
   void xUpdateRPRtmvp                 ( PicHeader* picHeader, Slice* slice );
@@ -218,6 +220,13 @@ private:
   uint64_t xFindDistortionPlane       ( const CPelBuf& pic0, const CPelBuf& pic1, uint32_t rshift ) const;
   void xPrintPictureInfo              ( const Picture& pic, AccessUnitList& accessUnit, const std::string& digestStr, bool printFrameMSE, bool isEncodeLtRef );
   inline bool xEncodersFinished       () { return ( int ) m_freePicEncoderList.size() >= std::max(1, m_pcEncCfg->m_maxParallelFrames); }
+  inline bool xLockStepPicsFinished   ()
+  {
+    std::lock_guard<std::mutex> lock( m_gopEncMutex );
+    return ( int ) m_freePicEncoderList.size() >= std::max(1, m_pcEncCfg->m_maxParallelFrames); 
+  }
+  void xForceScc                      ( Picture& pic );
+
 };// END CLASS DEFINITION EncGOP
 
 } // namespace vvenc
