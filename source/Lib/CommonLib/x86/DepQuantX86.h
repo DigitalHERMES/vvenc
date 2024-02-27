@@ -115,8 +115,6 @@ namespace DQIntern
 
     int      cffBitsCtxOffset;
     bool     anyRemRegBinsLt4;
-    unsigned effWidth;
-    unsigned effHeight;
     int      initRemRegBins;
   };
 
@@ -523,6 +521,8 @@ namespace DQIntern
       state.cffBitsCtxOffset      =  0;
       state.m_goRicePar[stateId]  =  0;
       state.m_goRiceZero[stateId] =  0;
+      state.sbbBits0[stateId]     =  0;
+      state.sbbBits1[stateId]     =  0;
     }
 
     static inline void checkRdCosts( const int stateId, const ScanPosType spt, const PQData& pqDataA, const PQData& pqDataB, Decisions& decisions, int idxAZ, int idxB, const StateMem& state )
@@ -1157,11 +1157,6 @@ namespace DQIntern
     {
     }
 
-    void init( int dqTrVal )
-    {
-      m_quant.init( dqTrVal );
-    }
-
     void quant( TransformUnit &tu, const CCoeffBuf &srcCoeff, const ComponentID compID, const QpParam &cQP, const double lambda, const Ctx &ctx, TCoeff &absSum, bool enableScalingLists, int *quantCoeff )
     {
       //===== reset / pre-init =====
@@ -1298,6 +1293,9 @@ namespace DQIntern
       }
 
       m_state_curr.m_gtxFracBitsArray = RateEstimator::gtxFracBits();
+      //memset( m_state_curr.tplAcc, 0, sizeof( m_state_curr.tplAcc ) ); // will be set in updateStates{,EOS} before first access
+      memset( m_state_curr.sum1st, 0, sizeof( m_state_curr.sum1st ) );   // will be accessed in setRiceParam before updateState{,EOS}
+      //memset( m_state_curr.absVal, 0, sizeof( m_state_curr.absVal ) ); // will be set in updateStates{,EOS} before first access
 
       const int numCtx = isLuma( compID ) ? 21 : 11;
       const CoeffFracBits* const cffBits = gtxFracBits();
@@ -1308,8 +1306,6 @@ namespace DQIntern
 
       int effectWidth  = std::min( 32, effWidth );
       int effectHeight = std::min( 32, effHeight );
-      m_state_curr.effWidth         = effectWidth;
-      m_state_curr.effHeight        = effectHeight;
       m_state_curr.initRemRegBins   = ( effectWidth * effectHeight * MAX_TU_LEVEL_CTX_CODED_BIN_CONSTRAINT ) / 16;
       m_state_curr.anyRemRegBinsLt4 = true; // for the first coeff use scalar impl., because it check against the init state, which
                                             // prohibits some paths
@@ -1504,7 +1500,6 @@ namespace DQIntern
 
   private:
     CommonCtx<vext> m_commonCtx;
-    Quantizer       m_quant;
     Decisions       m_trellis[MAX_TB_SIZEY * MAX_TB_SIZEY][2];
     Rom             m_scansRom;
 
